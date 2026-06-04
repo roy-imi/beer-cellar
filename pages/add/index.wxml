@@ -1,0 +1,104 @@
+<view class="page">
+  <view class="top">
+    <view>
+      <text class="title">{{formTitle}}</text>
+    </view>
+    <button class="btn secondary small" bindtap="cancel">取消</button>
+  </view>
+
+  <view class="panel editor">
+    <view class="suggest-field">
+      <input class="field" value="{{form.name}}" placeholder="名称，例如 Pliny the Elder" bindinput="onBeerNameInput" bindfocus="showBeerTips" />
+      <view wx:if="{{showExistingBeerSuggestions && existingBeerSuggestions.length > 0}}" class="suggestions beer-suggestions">
+        <view wx:for="{{existingBeerSuggestions}}" wx:key="id" class="suggestion beer-suggestion" data-id="{{item.id}}" bindtap="selectExistingBeer">
+          <text class="suggestion-name">{{item.label}}</text>
+          <text class="suggestion-detail">{{item.detail}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="row one">
+      <picker mode="selector" range="{{styleOptions}}" range-key="label" value="{{form.styleIndex}}" bindchange="onStyleChange">
+        <view class="select">{{styleOptions[form.styleIndex].label}}</view>
+      </picker>
+    </view>
+    <input wx:if="{{styleOptions[form.styleIndex].value == 'custom'}}" class="field" value="{{form.customStyle}}" data-key="customStyle" placeholder="输入自定义啤酒风格" bindinput="onFormInput" bindfocus="hideHopTips" />
+
+    <view class="suggest-field">
+      <input
+        class="field"
+        value="{{form.brewery}}"
+        placeholder="酒厂 / 品牌，可手动输入"
+        bindinput="onBreweryInput"
+        bindfocus="showBreweryTips"
+      />
+      <view wx:if="{{showBrewerySuggestions}}" class="suggestions">
+        <button
+          wx:for="{{brewerySuggestions}}"
+          wx:key="value"
+          class="suggestion"
+          data-value="{{item.value}}"
+          bindtap="selectBrewery"
+        >
+          {{item.label}}
+        </button>
+      </view>
+    </view>
+
+    <view class="suggest-field hop-picker">
+      <input
+        class="field"
+        value="{{form.hops}}"
+        placeholder="啤酒花，例如 Citra / 西楚，可手动输入多个"
+        bindinput="onHopInput"
+        bindfocus="showHopTips"
+      />
+      <view wx:if="{{showHopSuggestions}}" class="suggestions">
+        <button
+          wx:for="{{hopSuggestions}}"
+          wx:key="value"
+          class="suggestion {{item.selected ? 'selected' : ''}}"
+          data-value="{{item.value}}"
+          bindtap="selectHop"
+        >
+          {{item.label}}
+        </button>
+      </view>
+    </view>
+
+    <view class="row one">
+      <picker mode="date" value="{{form.date}}" bindchange="onDateChange">
+        <view class="select">{{form.date}}</view>
+      </picker>
+    </view>
+
+    <view class="row two">
+      <input class="field" type="number" value="{{form.quantity}}" data-key="quantity" placeholder="剩余" bindinput="onFormInput" bindfocus="hideHopTips" />
+      <view class="size-control">
+        <input class="size-input" type="digit" value="{{form.sizeAmount}}" data-key="sizeAmount" placeholder="容量" bindinput="onFormInput" bindfocus="hideHopTips" />
+        <picker mode="selector" range="{{sizeUnitOptions}}" range-key="label" value="{{form.sizeUnitIndex}}" bindchange="onSizeUnitChange">
+          <view class="unit-select">{{sizeUnitOptions[form.sizeUnitIndex].value}}</view>
+        </picker>
+      </view>
+    </view>
+    <view class="rating-lookup">
+      <input class="field" type="digit" value="{{form.rating}}" data-key="rating" placeholder="Untappd" bindinput="onFormInput" bindfocus="hideHopTips" />
+      <button class="btn secondary lookup-btn" bindtap="lookupUntappdForCellar">{{untappdStatusText}}</button>
+    </view>
+
+    <view class="photo-box">
+      <view class="photo-preview">
+        <image wx:if="{{form.imagePath}}" src="{{form.imagePath}}" mode="aspectFill"></image>
+        <text wx:else>NO PHOTO</text>
+      </view>
+      <view class="photo-actions">
+        <button class="btn secondary" bindtap="choosePhoto">选择照片</button>
+        <button class="btn secondary" bindtap="removePhoto">移除</button>
+      </view>
+    </view>
+
+    <textarea class="field note-input" value="{{form.note}}" data-key="note" placeholder="存放位置、批次、想喝场景" bindinput="onFormInput" bindfocus="hideHopTips"></textarea>
+
+    <button class="btn primary" bindtap="saveItem">保存库存</button>
+  </view>
+</view>
