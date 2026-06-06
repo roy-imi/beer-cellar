@@ -4,6 +4,55 @@
   background: #f7f2e8;
 }
 
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  margin-bottom: 18rpx;
+}
+
+.menu-button {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8rpx;
+  width: 72rpx;
+  height: 72rpx;
+  padding: 0 16rpx;
+  border: 2rpx solid #1f1f1f;
+  border-radius: 16rpx;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.menu-line {
+  width: 100%;
+  height: 4rpx;
+  border-radius: 999rpx;
+  background: #1f1f1f;
+}
+
+.topbar-copy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4rpx;
+  min-width: 0;
+}
+
+.topbar-title {
+  color: #1f1f1f;
+  font-size: 44rpx;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.topbar-subtitle {
+  color: #6b6251;
+  font-size: 22rpx;
+  line-height: 1.4;
+}
+
 .module {
   min-height: 100%;
 }
@@ -1069,6 +1118,338 @@
   font-weight: 900;
   line-height: 72rpx;
   text-align: center;
+}
+
+.drawer-layer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 30;
+  background: rgba(31, 31, 31, 0.4);
+}
+
+.drawer-panel {
+  width: 82%;
+  max-width: 620rpx;
+  height: 100%;
+  padding: 28rpx 20rpx 34rpx 24rpx;
+  background: #fbf7ef;
+  box-shadow: 18rpx 0 36rpx rgba(31, 31, 31, 0.14);
+  box-sizing: border-box;
+}
+
+.drawer-scroll {
+  height: 100%;
+}
+
+.drawer-profile {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  margin-bottom: 22rpx;
+  padding: 12rpx 8rpx 8rpx;
+}
+
+.drawer-auth-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  margin-bottom: 18rpx;
+  padding: 0 8rpx;
+}
+
+.drawer-auth-btn {
+  width: 100%;
+}
+
+.drawer-auth-hint {
+  color: #6b6251;
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+
+.drawer-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 92rpx;
+  height: 92rpx;
+  border: 2rpx solid #1f1f1f;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, #ffe9a6, #ffc000);
+  color: #1f1f1f;
+  font-size: 40rpx;
+  font-weight: 900;
+}
+
+.drawer-profile-copy {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4rpx;
+  min-width: 0;
+}
+
+.drawer-name {
+  color: #1f1f1f;
+  font-size: 40rpx;
+  font-weight: 900;
+}
+
+.drawer-status,
+.drawer-tagline {
+  color: #6b6251;
+  font-size: 22rpx;
+}
+
+.drawer-card {
+  margin-bottom: 18rpx;
+  padding: 22rpx;
+  border: 2rpx solid #1f1f1f;
+  border-radius: 20rpx;
+  background: #ffffff;
+}
+
+.drawer-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 18rpx;
+}
+
+.drawer-card-title {
+  color: #1f1f1f;
+  font-size: 32rpx;
+  font-weight: 900;
+}
+
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.calendar-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44rpx;
+  height: 44rpx;
+  border: 2rpx solid #ded2b5;
+  border-radius: 999rpx;
+  background: #fff8e4;
+  color: #1f1f1f;
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.calendar-month {
+  color: #1f1f1f;
+  font-size: 24rpx;
+  font-weight: 900;
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10rpx;
+}
+
+.calendar-weekdays {
+  margin-bottom: 10rpx;
+}
+
+.calendar-weekday {
+  color: #8c816f;
+  font-size: 20rpx;
+  text-align: center;
+}
+
+.calendar-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 70rpx;
+  border: 2rpx solid #efe4c9;
+  border-radius: 16rpx;
+  background: #fffdf8;
+  box-sizing: border-box;
+}
+
+.calendar-day.empty {
+  border-color: transparent;
+  background: transparent;
+}
+
+.calendar-day.level-1 {
+  background: #fff1b8;
+}
+
+.calendar-day.level-2 {
+  background: #ffe082;
+}
+
+.calendar-day.level-3 {
+  background: #ffc94f;
+}
+
+.calendar-day.today {
+  border-color: #1f1f1f;
+}
+
+.calendar-day.selected {
+  box-shadow: inset 0 0 0 2rpx #1f1f1f;
+}
+
+.calendar-day-label {
+  color: #1f1f1f;
+  font-size: 22rpx;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.calendar-day-count {
+  margin-top: 4rpx;
+  color: rgba(31, 31, 31, 0.72);
+  font-size: 18rpx;
+  line-height: 1;
+}
+
+.calendar-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14rpx;
+  margin-top: 18rpx;
+}
+
+.calendar-stat {
+  padding: 12rpx 10rpx;
+  border-radius: 16rpx;
+  background: #fff8e4;
+  text-align: center;
+}
+
+.calendar-stat-number,
+.calendar-stat-label {
+  display: block;
+}
+
+.calendar-stat-number {
+  color: #1f1f1f;
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.calendar-stat-label {
+  margin-top: 4rpx;
+  color: #6b6251;
+  font-size: 20rpx;
+}
+
+.calendar-summary {
+  margin-top: 18rpx;
+  padding: 18rpx;
+  border-radius: 16rpx;
+  background: #f7f2e8;
+}
+
+.calendar-summary-title {
+  display: block;
+  color: #1f1f1f;
+  font-size: 26rpx;
+  font-weight: 900;
+}
+
+.calendar-summary-text {
+  display: block;
+  margin-top: 6rpx;
+  color: #6b6251;
+  font-size: 22rpx;
+}
+
+.calendar-summary-tags {
+  display: flex;
+  gap: 10rpx;
+  margin-top: 12rpx;
+}
+
+.calendar-summary-tag {
+  min-height: 44rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
+  background: #ffffff;
+  color: #1f1f1f;
+  font-size: 20rpx;
+  font-weight: 900;
+  line-height: 44rpx;
+}
+
+.drawer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14rpx;
+}
+
+.drawer-grid-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 130rpx;
+  padding: 16rpx 12rpx;
+  border: 2rpx solid #ded2b5;
+  border-radius: 18rpx;
+  background: #fffdf8;
+  text-align: center;
+}
+
+.drawer-grid-icon {
+  color: #1f1f1f;
+  font-size: 34rpx;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.drawer-grid-label {
+  margin-top: 10rpx;
+  color: #1f1f1f;
+  font-size: 22rpx;
+  font-weight: 800;
+}
+
+.settings-card {
+  padding-top: 6rpx;
+  padding-bottom: 6rpx;
+}
+
+.drawer-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  min-height: 86rpx;
+  border-bottom: 2rpx solid #efe4c9;
+}
+
+.drawer-list-item:last-child {
+  border-bottom: 0;
+}
+
+.drawer-list-label {
+  color: #1f1f1f;
+  font-size: 28rpx;
+  font-weight: 800;
+}
+
+.drawer-list-arrow {
+  color: #8c816f;
+  font-size: 30rpx;
+  font-weight: 900;
 }
 
 .module-tabs {

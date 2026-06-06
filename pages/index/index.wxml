@@ -1,9 +1,18 @@
 <view class="page">
+  <view class="topbar">
+    <view class="menu-button" bindtap="openSideDrawer" aria-label="打开侧边栏">
+      <view class="menu-line"></view>
+      <view class="menu-line"></view>
+      <view class="menu-line"></view>
+    </view>
+    <view class="topbar-copy">
+      <text class="topbar-title">{{activeModule == 'cellar' ? '啤记' : (activeModule == 'favorites' ? '喜欢的酒' : '酒吧记录')}}</text>
+      <text class="topbar-subtitle">{{selectedCalendarSummary ? selectedCalendarSummary.dateLabel + ' · 共 ' + selectedCalendarSummary.total + ' 条喝酒记录' : '酒窖与喝酒轨迹'}}</text>
+    </view>
+  </view>
+
   <view wx:if="{{activeModule == 'cellar'}}" class="module">
   <view class="hero">
-    <view>
-      <text class="title">啤记</text>
-    </view>
     <view class="stats">
       <view class="stat tappable" data-filter="all" bindtap="openStat">
         <text class="stat-number">{{stats.total}}</text>
@@ -93,10 +102,10 @@
       <view class="link-btn" bindtap="showQuery">查看全部</view>
     </view>
 
-    <view wx:if="{{statsItems.length == 0}}" class="empty with-action">
-      <text>暂无库存数据</text>
-            <view class="btn secondary small" bindtap="restoreSamples">恢复示例</view>
-    </view>
+      <view wx:if="{{statsItems.length == 0 && sampleModeEnabled}}" class="empty with-action">
+        <text>暂无库存数据</text>
+        <view class="btn secondary small" bindtap="restoreSamples">恢复示例</view>
+      </view>
 
     <view wx:for="{{statsItems}}" wx:key="id" class="preview-item">
       <view class="cover {{item.imagePath ? 'photo-cover' : ''}}" data-src="{{item.imagePath}}" bindtap="previewPhoto">
@@ -207,9 +216,9 @@
   <view wx:if="{{activeTab == 'add'}}" class="panel editor">
     <view class="panel-head">
       <view>
-        <text class="panel-title">记录库存</text>
+        <text class="panel-title">{{editingCellarId ? '编辑库存' : '记录库存'}}</text>
       </view>
-      <view class="btn secondary small" bindtap="resetForm">清空</view>
+      <view class="btn secondary small" bindtap="resetForm">{{editingCellarId ? '取消编辑' : '清空'}}</view>
     </view>
 
     <view class="suggest-field">
@@ -280,7 +289,7 @@
 
     <textarea class="field note-input" value="{{form.note}}" data-key="note" placeholder="存放位置、批次、想喝场景" bindinput="onFormInput" bindfocus="hideCellarHopTips"></textarea>
 
-    <button class="btn primary" bindtap="saveNewItem">保存库存</button>
+    <button class="btn primary" bindtap="saveNewItem">{{editingCellarId ? '保存修改' : '保存库存'}}</button>
   </view>
   </view>
 
@@ -318,12 +327,6 @@
   </view>
 
   <view wx:if="{{activeModule == 'bar'}}" class="module">
-    <view class="hero compact-hero">
-      <view>
-        <text class="title">酒吧记录</text>
-      </view>
-    </view>
-
     <view class="tabs">
       <view class="tab {{barActiveTab == 'stats' ? 'active' : ''}}" data-tab="stats" bindtap="switchBarTab">统计</view>
       <view class="tab {{barActiveTab == 'query' ? 'active' : ''}}" data-tab="query" bindtap="switchBarTab">查看</view>
@@ -545,6 +548,124 @@
         <view wx:if="{{actionMenuKind == 'bar'}}" class="mini-btn" data-id="{{actionMenuId}}" bindtap="editBarItem" aria-label="编辑">✎</view>
         <view wx:if="{{actionMenuKind == 'bar'}}" class="mini-btn danger-text" data-id="{{actionMenuId}}" bindtap="deleteBarItem">×</view>
       </view>
+    </view>
+  </view>
+
+  <view wx:if="{{showSideDrawer}}" class="drawer-layer" bindtap="closeSideDrawer">
+    <view class="drawer-panel" catchtap="noop">
+      <scroll-view scroll-y class="drawer-scroll">
+        <view class="drawer-profile">
+          <view class="drawer-avatar">{{userProfile.avatarInitial}}</view>
+          <view class="drawer-profile-copy">
+            <text class="drawer-name">{{userProfile.nickname}}</text>
+            <text class="drawer-status">{{userProfile.status}}</text>
+            <text class="drawer-tagline">{{userProfile.tagline}}</text>
+          </view>
+        </view>
+        <view class="drawer-auth-actions">
+          <view class="btn secondary small drawer-auth-btn" bindtap="toggleDevAccount">{{devUser.loggedIn ? '退出登录' : '开发态登录'}}</view>
+          <text wx:if="{{sampleModeEnabled}}" class="drawer-auth-hint">当前保留测试数据入口，发布前可关闭</text>
+        </view>
+
+        <view class="drawer-card calendar-card">
+          <view class="drawer-card-head">
+            <text class="drawer-card-title">喝酒日历</text>
+            <view class="calendar-nav">
+              <view class="calendar-nav-btn" bindtap="showPreviousCalendarMonth">‹</view>
+              <text class="calendar-month">{{calendarMonthLabel}}</text>
+              <view class="calendar-nav-btn" bindtap="showNextCalendarMonth">›</view>
+            </view>
+          </view>
+
+          <view class="calendar-weekdays">
+            <text wx:for="{{calendarWeekLabels}}" wx:key="*this" class="calendar-weekday">{{item}}</text>
+          </view>
+
+          <view class="calendar-grid">
+            <view
+              wx:for="{{calendarDays}}"
+              wx:key="key"
+              class="calendar-day {{item.empty ? 'empty' : ''}} {{item.level}} {{item.isToday ? 'today' : ''}} {{item.isSelected ? 'selected' : ''}}"
+              data-date="{{item.date}}"
+              bindtap="selectCalendarDate"
+            >
+              <text wx:if="{{!item.empty}}" class="calendar-day-label">{{item.label}}</text>
+              <text wx:if="{{item.total > 0}}" class="calendar-day-count">{{item.total}}</text>
+            </view>
+          </view>
+
+          <view class="calendar-stats">
+            <view class="calendar-stat">
+              <text class="calendar-stat-number">{{calendarStats.recordDays}}</text>
+              <text class="calendar-stat-label">记录天数</text>
+            </view>
+            <view class="calendar-stat">
+              <text class="calendar-stat-number">{{calendarStats.totalRecords}}</text>
+              <text class="calendar-stat-label">总记录</text>
+            </view>
+            <view class="calendar-stat">
+              <text class="calendar-stat-number">{{calendarStats.streakDays}}</text>
+              <text class="calendar-stat-label">连续天数</text>
+            </view>
+          </view>
+
+          <view class="calendar-summary">
+            <text class="calendar-summary-title">{{selectedCalendarSummary ? selectedCalendarSummary.dateLabel : '本月暂无记录'}}</text>
+            <text class="calendar-summary-text">{{selectedCalendarSummary ? ('当天共 ' + selectedCalendarSummary.total + ' 条记录') : '喝酒日期会在这里高亮展示'}}</text>
+            <view wx:if="{{selectedCalendarSummary}}" class="calendar-summary-tags">
+              <text class="calendar-summary-tag">家里 {{selectedCalendarSummary.cellar}}</text>
+              <text class="calendar-summary-tag">外面 {{selectedCalendarSummary.bar}}</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="drawer-card">
+          <view class="drawer-card-head">
+            <text class="drawer-card-title">更多功能</text>
+          </view>
+          <view class="drawer-grid">
+            <view class="drawer-grid-item" data-label="图表统计" bindtap="showDrawerAction">
+              <text class="drawer-grid-icon">◔</text>
+              <text class="drawer-grid-label">图表统计</text>
+            </view>
+            <view class="drawer-grid-item" data-label="导出记录" bindtap="showDrawerAction">
+              <text class="drawer-grid-icon">⇪</text>
+              <text class="drawer-grid-label">导出记录</text>
+            </view>
+            <view class="drawer-grid-item" data-label="导入记录" bindtap="showDrawerAction">
+              <text class="drawer-grid-icon">⇩</text>
+              <text class="drawer-grid-label">导入记录</text>
+            </view>
+            <view class="drawer-grid-item" data-label="缓存管理" bindtap="showDrawerAction">
+              <text class="drawer-grid-icon">◫</text>
+              <text class="drawer-grid-label">缓存管理</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="drawer-card settings-card">
+          <view class="drawer-list-item" bindtap="toggleDevAccount">
+            <text class="drawer-list-label">{{devUser.loggedIn ? '退出开发态账号' : '登录开发态账号'}}</text>
+            <text class="drawer-list-arrow">›</text>
+          </view>
+          <view class="drawer-list-item" data-label="设置" bindtap="showDrawerAction">
+            <text class="drawer-list-label">设置</text>
+            <text class="drawer-list-arrow">›</text>
+          </view>
+          <view class="drawer-list-item" data-label="反馈与建议" bindtap="showDrawerAction">
+            <text class="drawer-list-label">反馈与建议</text>
+            <text class="drawer-list-arrow">›</text>
+          </view>
+          <view class="drawer-list-item" data-label="Untappd 配置说明" bindtap="showDrawerAction">
+            <text class="drawer-list-label">Untappd 配置说明</text>
+            <text class="drawer-list-arrow">›</text>
+          </view>
+          <view class="drawer-list-item" data-label="关于啤记" bindtap="showDrawerAction">
+            <text class="drawer-list-label">关于啤记</text>
+            <text class="drawer-list-arrow">›</text>
+          </view>
+        </view>
+      </scroll-view>
     </view>
   </view>
 

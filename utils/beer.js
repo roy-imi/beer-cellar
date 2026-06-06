@@ -1,5 +1,6 @@
 const STORAGE_KEY = "beer-cellar-miniprogram-v1";
 const BAR_STORAGE_KEY = "beer-cellar-bar-drinks-v1";
+const DATA_SANITIZED_MIGRATION_KEY = "beer-cellar-data-sanitized-20260606";
 const CURRENT_FRIDGE_IMPORT_KEY = "beer-cellar-current-fridge-imported-20260603";
 const CURRENT_FRIDGE_DATE_KIND_MIGRATION_KEY = "beer-cellar-current-fridge-date-kind-migrated-20260603";
 const CURRENT_FRIDGE_DRUNK_REIMPORT_KEY = "beer-cellar-current-fridge-drunk-reimported-20260603";
@@ -9,6 +10,7 @@ const LIKED_HOME_ENGLISH_NAME_KEY = "beer-cellar-liked-home-english-name-2026060
 const DEFAULT_SIZE_MIGRATION_KEY = "beer-cellar-default-size-migrated-20260603";
 const BAR_SAMPLE_IMPORT_KEY = "beer-cellar-bar-samples-imported-20260604";
 const DEFAULT_BEER_SIZE = "473ml";
+const ENABLE_TEST_SEED_DATA = true;
 
 const sizeUnitOptions = [
   { label: "毫升 ml", value: "ml" },
@@ -595,6 +597,77 @@ function composeSize(form) {
   return `${amount}${unit.value}`;
 }
 
+function parsePositiveNumber(value) {
+  const parsed = Number(String(value || "").trim());
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
+function parseRatingValue(value, maxValue) {
+  if (value === "" || value === undefined || value === null) return "";
+  const parsed = Number(String(value).trim());
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > maxValue) return null;
+  return Math.round(parsed * 100) / 100;
+}
+
+function sanitizeItem(item) {
+  const nextItem = { ...item };
+  if (!nextItem.size || !parseSize(nextItem.size).amount) {
+    nextItem.size = DEFAULT_BEER_SIZE;
+  }
+  const rating = parseRatingValue(nextItem.rating, 5);
+  nextItem.rating = rating === null ? "" : rating;
+  if (nextItem.drunk) {
+    nextItem.quantity = 0;
+    return nextItem;
+  }
+  nextItem.quantity = Math.max(1, Math.round(Number(nextItem.quantity || 0) || 0));
+  return nextItem;
+}
+
+function sanitizeBarItem(item) {
+  const nextItem = { ...item };
+  const rating = parseRatingValue(nextItem.rating, 5);
+  const venueRating = parseRatingValue(nextItem.venueRating, 10);
+  nextItem.rating = rating === null ? "" : rating;
+  nextItem.venueRating = venueRating === null ? "" : venueRating;
+  return nextItem;
+}
+
+function validateCellarForm(form) {
+  const name = String(form.name || "").trim();
+  if (!name) return "请填写名称";
+  if (styleOptions[form.styleIndex].value === "custom" && !String(form.customStyle || "").trim()) {
+    return "请填写风格";
+  }
+  const quantity = parsePositiveNumber(form.quantity);
+  if (!quantity || !Number.isInteger(quantity)) {
+    return "剩余数量需为正整数";
+  }
+  if (!parsePositiveNumber(form.sizeAmount)) {
+    return "容量需大于 0";
+  }
+  if (parseRatingValue(form.rating, 5) === null) {
+    return "Untappd 评分需在 0-5";
+  }
+  return "";
+}
+
+function validateBarForm(form) {
+  if (!String(form.venue || "").trim()) return "请填写酒吧";
+  if (!String(form.name || "").trim()) return "请填写酒名";
+  if (styleOptions[form.styleIndex].value === "custom" && !String(form.customStyle || "").trim()) {
+    return "请填写风格";
+  }
+  if (parseRatingValue(form.rating, 5) === null) {
+    return "评分需在 0-5";
+  }
+  if (parseRatingValue(form.venueRating, 10) === null) {
+    return "酒吧评分需在 0-10";
+  }
+  return "";
+}
+
 function isDefaultSampleItem(item) {
   return sampleItems.some((sample) => {
     return [
@@ -679,6 +752,7 @@ function ensureLikedHomeEnglishNames(items) {
 
 function loadItems() {
   const stored = wx.getStorageSync(STORAGE_KEY);
+  const sanitizedMigrated = wx.getStorageSync(DATA_SANITIZED_MIGRATION_KEY);
   const imported = wx.getStorageSync(CURRENT_FRIDGE_IMPORT_KEY);
   const dateKindMigrated = wx.getStorageSync(CURRENT_FRIDGE_DATE_KIND_MIGRATION_KEY);
   const drunkReimported = wx.getStorageSync(CURRENT_FRIDGE_DRUNK_REIMPORT_KEY);
@@ -686,7 +760,7 @@ function loadItems() {
   const likedHomeImported = wx.getStorageSync(LIKED_HOME_IMPORT_KEY);
   const likedHomeEnglishNameMigrated = wx.getStorageSync(LIKED_HOME_ENGLISH_NAME_KEY);
   const defaultSizeMigrated = wx.getStorageSync(DEFAULT_SIZE_MIGRATION_KEY);
-  if (!imported) {
+  if (!imported && ENABLE_TEST_SEED_DATA) {
     const baseItems = Array.isArray(stored) ? stored.filter((item) => !isDefaultSampleItem(item)) : [];
     const importedItems = currentFridgeItems.map((item) => ({ ...item, id: uuid() }));
     let nextItems = importedItems.reduce((items, item) => mergeOrInsertItem(items, item), baseItems);
@@ -705,7 +779,10 @@ function loadItems() {
     wx.setStorageSync(STORAGE_KEY, nextItems);
     wx.setStorageSync(CURRENT_FRIDGE_IMPORT_KEY, true);
     wx.setStorageSync(CURRENT_FRIDGE_DATE_KIND_MIGRATION_KEY, true);
-    return nextItems;
+    const sanitizedItems = nextItems.map(sanitizeItem);
+    wx.setStorageSync(STORAGE_KEY, sanitizedItems);
+    wx.setStorageSync(DATA_SANITIZED_MIGRATION_KEY, true);
+    return sanitizedItems;
   }
 
   if (Array.isArray(stored) && stored.length) {
@@ -752,13 +829,18 @@ function loadItems() {
       wx.setStorageSync(DEFAULT_SIZE_MIGRATION_KEY, true);
     }
 
+    if (!sanitizedMigrated) {
+      nextItems = nextItems.map(sanitizeItem);
+      wx.setStorageSync(DATA_SANITIZED_MIGRATION_KEY, true);
+    }
+
     if (nextItems !== stored) {
       wx.setStorageSync(STORAGE_KEY, nextItems);
     }
 
     return nextItems;
   }
-  if (!drunkReimported) {
+  if (!drunkReimported && ENABLE_TEST_SEED_DATA) {
     let nextItems = ensureCurrentFridgeDrunkItems([]);
     if (!likedHomeImported) {
       nextItems = ensureLikedHomeItems(nextItems);
@@ -772,13 +854,19 @@ function loadItems() {
       nextItems = nextItems.map((item) => ({ ...item, size: DEFAULT_BEER_SIZE }));
       wx.setStorageSync(DEFAULT_SIZE_MIGRATION_KEY, true);
     }
-    wx.setStorageSync(STORAGE_KEY, nextItems);
+    const sanitizedItems = nextItems.map(sanitizeItem);
+    wx.setStorageSync(STORAGE_KEY, sanitizedItems);
     wx.setStorageSync(CURRENT_FRIDGE_DRUNK_REIMPORT_KEY, true);
     wx.setStorageSync(UNDRUNK_ZERO_QUANTITY_FIX_KEY, true);
-    return nextItems;
+    wx.setStorageSync(DATA_SANITIZED_MIGRATION_KEY, true);
+    return sanitizedItems;
   }
 
-  return sampleItems.map((item) => ({ ...item, id: uuid() }));
+  if (ENABLE_TEST_SEED_DATA) {
+    return sampleItems.map((item) => sanitizeItem({ ...item, id: uuid() }));
+  }
+
+  return [];
 }
 
 function saveItems(items) {
@@ -788,12 +876,13 @@ function saveItems(items) {
 function loadBarItems() {
   const stored = wx.getStorageSync(BAR_STORAGE_KEY);
   const sampleImported = wx.getStorageSync(BAR_SAMPLE_IMPORT_KEY);
-  const baseItems = Array.isArray(stored) ? stored : [];
-  if (sampleImported) return baseItems;
+  const baseItems = Array.isArray(stored) ? stored.map(sanitizeBarItem) : [];
+  if (sampleImported || !ENABLE_TEST_SEED_DATA) return baseItems;
   const nextItems = ensureBarSampleItems(baseItems);
-  wx.setStorageSync(BAR_STORAGE_KEY, nextItems);
+  const sanitizedItems = nextItems.map(sanitizeBarItem);
+  wx.setStorageSync(BAR_STORAGE_KEY, sanitizedItems);
   wx.setStorageSync(BAR_SAMPLE_IMPORT_KEY, true);
-  return nextItems;
+  return sanitizedItems;
 }
 
 function saveBarItems(items) {
@@ -864,9 +953,9 @@ function buildItemFromForm(form, editingId, previousItem) {
     brewery: form.brewery.trim(),
     date: form.date,
     dateKind: "packaged",
-    quantity: Number(form.quantity || 0),
+    quantity: Math.round(parsePositiveNumber(form.quantity) || 0),
     size: composeSize(form),
-    rating: form.rating ? Number(form.rating) : "",
+    rating: parseRatingValue(form.rating, 5),
     imagePath: form.imagePath,
     note: form.note.trim(),
     favorite: previousItem ? Boolean(previousItem.favorite) : false,
@@ -914,8 +1003,8 @@ function buildBarItemFromForm(form, editingId) {
     region: form.region ? form.region.trim() : "",
     city: form.city.trim(),
     date: form.date,
-    venueRating: form.venueRating ? Number(form.venueRating) : "",
-    rating: form.rating ? Number(form.rating) : "",
+    venueRating: parseRatingValue(form.venueRating, 10),
+    rating: parseRatingValue(form.rating, 5),
     imagePath: form.imagePath || "",
     note: form.note.trim(),
     favorite: Boolean(form.favorite),
@@ -1050,6 +1139,7 @@ function summarize(items) {
 module.exports = {
   STORAGE_KEY,
   BAR_STORAGE_KEY,
+  ENABLE_TEST_SEED_DATA,
   sortOptions,
   dateKindOptions,
   sizeUnitOptions,
@@ -1067,6 +1157,8 @@ module.exports = {
   saveItems,
   loadBarItems,
   saveBarItems,
+  validateCellarForm,
+  validateBarForm,
   toEditForm,
   toBarEditForm,
   buildExistingBeerSuggestions,

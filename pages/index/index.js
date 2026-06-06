@@ -7,12 +7,15 @@ const {
   filteredAndSortedBarItems,
   summarize,
   freshness,
+  ENABLE_TEST_SEED_DATA,
   sortOptions,
   sampleItems,
   today,
   uuid,
   createEmptyForm,
   createEmptyBarForm,
+  validateCellarForm,
+  validateBarForm,
   toEditForm,
   toBarEditForm,
   buildExistingBeerSuggestions,
@@ -24,6 +27,17 @@ const {
   hopOptions,
   sizeUnitOptions
 } = require("../../utils/beer");
+const {
+  saveImageFile,
+  removeLocalFile,
+  removeLocalFiles
+} = require("../../utils/media");
+const {
+  loadDevUser,
+  loginDevUser,
+  logoutDevUser,
+  buildUserProfile
+} = require("../../utils/user");
 const {
   untappdConfig,
   getUntappdStatusText,
@@ -96,11 +110,40 @@ const barRegionOptions = [
   }
 ];
 
+const calendarWeekLabels = ["日", "一", "二", "三", "四", "五", "六"];
+
+function padNumber(value) {
+  return String(value).padStart(2, "0");
+}
+
+function formatMonthValue(dateValue) {
+  const date = dateValue ? new Date(`${dateValue}T00:00:00`) : new Date();
+  return `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}`;
+}
+
+function formatMonthLabel(monthValue) {
+  const [year, month] = String(monthValue || formatMonthValue()).split("-");
+  return `${year}年${Number(month)}月`;
+}
+
+function shiftMonthValue(monthValue, delta) {
+  const [year, month] = String(monthValue || formatMonthValue()).split("-").map(Number);
+  const next = new Date(year, month - 1 + delta, 1);
+  return `${next.getFullYear()}-${padNumber(next.getMonth() + 1)}`;
+}
+
+function dateDiffInDays(a, b) {
+  const aDate = new Date(`${a}T00:00:00`);
+  const bDate = new Date(`${b}T00:00:00`);
+  return Math.round((bDate - aDate) / 86400000);
+}
+
 Page({
   data: {
     activeModule: "cellar",
     activeTab: "stats",
     barActiveTab: "stats",
+    showSideDrawer: false,
     items: [],
     barItems: [],
     visibleItems: [],
@@ -141,8 +184,11 @@ Page({
     hopStats: [],
     freshnessStats: [],
     form: createEmptyForm(),
+    editingCellarId: "",
+    editingCellarOriginalImagePath: "",
     barForm: createEmptyBarForm(),
     editingBarId: "",
+    editingBarOriginalImagePath: "",
     showExistingBeerSuggestions: false,
     existingBeerSuggestions: [],
     showBrewerySuggestions: false,
@@ -153,6 +199,16 @@ Page({
     barHopSuggestions: hopOptions.slice(0, 8),
     showBarVenueSuggestions: false,
     barVenueSuggestions: [],
+    calendarWeekLabels,
+    selectedCalendarMonth: formatMonthValue(),
+    calendarMonthLabel: formatMonthLabel(formatMonthValue()),
+    calendarDays: [],
+    calendarStats: { recordDays: 0, totalRecords: 0, streakDays: 0 },
+    selectedCalendarDate: "",
+    selectedCalendarSummary: null,
+    devUser: loadDevUser(),
+    userProfile: buildUserProfile(loadDevUser(), { sampleMode: ENABLE_TEST_SEED_DATA }),
+    sampleModeEnabled: ENABLE_TEST_SEED_DATA,
     sortOptions,
     styleOptions,
     hopOptions,
@@ -172,11 +228,28 @@ Page({
   refreshFromStorage() {
     const items = loadItems();
     const barItems = loadBarItems();
-    this.setData({ items, barItems }, () => this.refresh());
+    const devUser = loadDevUser();
+    this.setData({
+      items,
+      barItems,
+      devUser,
+      userProfile: buildUserProfile(devUser, { sampleMode: ENABLE_TEST_SEED_DATA })
+    }, () => this.refresh());
   },
 
   refresh() {
-    const { items, barItems, query, barQuery, sortIndex, statFilter, barViewMode, barExpandedVenueKeys } = this.data;
+    const {
+      items,
+      barItems,
+      query,
+      barQuery,
+      sortIndex,
+      statFilter,
+      barViewMode,
+      barExpandedVenueKeys,
+      selectedCalendarMonth,
+      selectedCalendarDate
+    } = this.data;
     const baseItems = filteredAndSortedItems(items, query, sortIndex);
     const visibleItems = this.filterByStat(baseItems, statFilter);
     const visibleGroups = this.groupVisibleItems(visibleItems);
@@ -197,6 +270,7 @@ Page({
       ? rawVisibleBarGroups.filter((group) => group.isFavoriteVenue)
       : rawVisibleBarGroups;
     const favoriteItems = this.buildFavoriteItems(items, barItems);
+    const calendarModel = this.buildDrinkCalendarModel(items, barItems, selectedCalendarMonth, selectedCalendarDate);
     this.setData({
       visibleItems,
       visibleGroups,
@@ -218,15 +292,206 @@ Page({
       breweryStats: dimensionStats.breweryStats,
       styleStats: dimensionStats.styleStats,
       hopStats: dimensionStats.hopStats,
-      freshnessStats: dimensionStats.freshnessStats
+      freshnessStats: dimensionStats.freshnessStats,
+      calendarMonthLabel: calendarModel.monthLabel,
+      calendarDays: calendarModel.days,
+      calendarStats: calendarModel.stats,
+      selectedCalendarDate: calendarModel.selectedDate,
+      selectedCalendarSummary: calendarModel.selectedSummary
     });
   },
 
   switchModule(event) {
     this.setData({
       activeModule: event.currentTarget.dataset.module,
-      actionMenuId: ""
+      actionMenuId: "",
+      showSideDrawer: false
     });
+  },
+
+  openSideDrawer() {
+    this.setData({ showSideDrawer: true });
+  },
+
+  closeSideDrawer() {
+    this.setData({ showSideDrawer: false });
+  },
+
+  promptDevLogin() {
+    wx.showModal({
+      title: "开发态登录",
+      editable: true,
+      placeholderText: "输入昵称",
+      confirmText: "登录",
+      confirmColor: "#ffc000",
+      success: (result) => {
+        if (!result.confirm) return;
+        const nickname = String(result.content || "").trim();
+        if (!nickname) {
+          wx.showToast({ title: "请输入昵称", icon: "none" });
+          return;
+        }
+        const devUser = loginDevUser(nickname);
+        this.setData({
+          devUser,
+          userProfile: buildUserProfile(devUser, { sampleMode: ENABLE_TEST_SEED_DATA })
+        });
+        wx.showToast({ title: "已登录", icon: "success" });
+      }
+    });
+  },
+
+  logoutDevAccount() {
+    const devUser = logoutDevUser();
+    this.setData({
+      devUser,
+      userProfile: buildUserProfile(devUser, { sampleMode: ENABLE_TEST_SEED_DATA })
+    });
+    wx.showToast({ title: "已登出", icon: "none" });
+  },
+
+  toggleDevAccount() {
+    if (this.data.devUser.loggedIn) {
+      this.logoutDevAccount();
+      return;
+    }
+    this.promptDevLogin();
+  },
+
+  cleanupCellarFormDraftImage() {
+    const { form, editingCellarOriginalImagePath } = this.data;
+    if (!form.imagePath || form.imagePath === editingCellarOriginalImagePath) {
+      return Promise.resolve(false);
+    }
+    return removeLocalFile(form.imagePath);
+  },
+
+  cleanupBarFormDraftImage() {
+    const { barForm, editingBarOriginalImagePath } = this.data;
+    if (!barForm.imagePath || barForm.imagePath === editingBarOriginalImagePath) {
+      return Promise.resolve(false);
+    }
+    return removeLocalFile(barForm.imagePath);
+  },
+
+  buildDrinkCalendarModel(items, barItems, monthValue, selectedDate) {
+    const allRecords = []
+      .concat(
+        items
+          .filter((item) => item.drunk && item.drinkDate)
+          .map((item) => ({
+            date: item.drinkDate,
+            source: "cellar",
+            name: item.name || ""
+          }))
+      )
+      .concat(
+        barItems
+          .filter((item) => item.date)
+          .map((item) => ({
+            date: item.date,
+            source: "bar",
+            name: item.name || ""
+          }))
+      )
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const allDateKeys = Array.from(new Set(allRecords.map((record) => record.date))).sort((a, b) => a.localeCompare(b));
+    let streakDays = 0;
+    if (allDateKeys.length) {
+      streakDays = 1;
+      for (let index = allDateKeys.length - 1; index > 0; index -= 1) {
+        if (dateDiffInDays(allDateKeys[index - 1], allDateKeys[index]) === 1) {
+          streakDays += 1;
+          continue;
+        }
+        break;
+      }
+    }
+
+    const monthRecords = allRecords.filter((record) => record.date.slice(0, 7) === monthValue);
+    const recordMap = monthRecords.reduce((map, record) => {
+      if (!map[record.date]) {
+        map[record.date] = {
+          total: 0,
+          cellar: 0,
+          bar: 0
+        };
+      }
+      map[record.date].total += 1;
+      map[record.date][record.source] += 1;
+      return map;
+    }, {});
+
+    const monthDates = Object.keys(recordMap).sort((a, b) => a.localeCompare(b));
+    const todayValue = today();
+    const fallbackSelectedDate = monthDates.includes(selectedDate)
+      ? selectedDate
+      : (todayValue.slice(0, 7) === monthValue && recordMap[todayValue]
+        ? todayValue
+        : (monthDates[monthDates.length - 1] || ""));
+
+    const [year, month] = monthValue.split("-").map(Number);
+    const firstDay = new Date(year, month - 1, 1).getDay();
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const maxDailyCount = monthDates.reduce((max, date) => Math.max(max, recordMap[date].total), 0);
+    const days = [];
+
+    for (let i = 0; i < firstDay; i += 1) {
+      days.push({ key: `blank-${i}`, empty: true });
+    }
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = `${monthValue}-${padNumber(day)}`;
+      const summary = recordMap[date];
+      const total = summary ? summary.total : 0;
+      let level = "";
+      if (total > 0 && maxDailyCount > 0) {
+        if (total >= Math.max(3, maxDailyCount)) {
+          level = "level-3";
+        } else if (total >= Math.max(2, Math.ceil(maxDailyCount * 0.66))) {
+          level = "level-2";
+        } else {
+          level = "level-1";
+        }
+      }
+      days.push({
+        key: date,
+        date,
+        label: String(day),
+        total,
+        level,
+        isToday: date === todayValue,
+        isSelected: date === fallbackSelectedDate
+      });
+    }
+
+    const selectedSummary = fallbackSelectedDate
+      ? {
+        date: fallbackSelectedDate,
+        dateLabel: (() => {
+          const match = fallbackSelectedDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          const monthText = match ? match[2] : "0";
+          const dayText = match ? match[3] : "0";
+          return `${Number(monthText)}月${Number(dayText)}日`;
+        })(),
+        total: recordMap[fallbackSelectedDate] ? recordMap[fallbackSelectedDate].total : 0,
+        cellar: recordMap[fallbackSelectedDate] ? recordMap[fallbackSelectedDate].cellar : 0,
+        bar: recordMap[fallbackSelectedDate] ? recordMap[fallbackSelectedDate].bar : 0
+      }
+      : null;
+
+    return {
+      monthLabel: formatMonthLabel(monthValue),
+      days,
+      selectedDate: fallbackSelectedDate,
+      selectedSummary,
+      stats: {
+        recordDays: allDateKeys.length,
+        totalRecords: allRecords.length,
+        streakDays
+      }
+    };
   },
 
   buildFavoriteItems(items, barItems) {
@@ -306,36 +571,10 @@ Page({
   },
 
   buildFavoriteBarKeyMap(items) {
-    const bars = {};
-    items.forEach((item) => {
+    return items.reduce((map, item) => {
+      if (!item.barFavorite) return map;
       const key = [item.venue || "", item.city || ""].join("|").toLowerCase();
-      if (!bars[key]) {
-        bars[key] = {
-          ratingTotal: 0,
-          ratingCount: 0,
-          manualFavorite: false
-        };
-      }
-      if (item.barFavorite) {
-        bars[key].manualFavorite = true;
-      }
-      if (item.venueRating) {
-        bars[key].ratingTotal += Number(item.venueRating);
-        bars[key].ratingCount += 1;
-      }
-    });
-    const ratedBars = Object.values(bars)
-      .map((bar) => bar.ratingCount > 0 ? bar.ratingTotal / bar.ratingCount : null)
-      .filter((rating) => rating !== null);
-    const averageRating = ratedBars.length
-      ? ratedBars.reduce((sum, rating) => sum + rating, 0) / ratedBars.length
-      : 0;
-    return Object.keys(bars).reduce((map, key) => {
-      const bar = bars[key];
-      const rating = bar.ratingCount > 0 ? bar.ratingTotal / bar.ratingCount : null;
-      if (bar.manualFavorite || (rating !== null && rating > averageRating)) {
-        map[key] = true;
-      }
+      map[key] = true;
       return map;
     }, {});
   },
@@ -751,6 +990,31 @@ Page({
     this.setData({ activeTab: "add" });
   },
 
+  selectCalendarDate(event) {
+    const date = event.currentTarget.dataset.date;
+    if (!date) return;
+    this.setData({ selectedCalendarDate: date }, () => this.refresh());
+  },
+
+  showPreviousCalendarMonth() {
+    this.setData({
+      selectedCalendarMonth: shiftMonthValue(this.data.selectedCalendarMonth, -1),
+      selectedCalendarDate: ""
+    }, () => this.refresh());
+  },
+
+  showNextCalendarMonth() {
+    this.setData({
+      selectedCalendarMonth: shiftMonthValue(this.data.selectedCalendarMonth, 1),
+      selectedCalendarDate: ""
+    }, () => this.refresh());
+  },
+
+  showDrawerAction(event) {
+    const label = event.currentTarget.dataset.label || "该功能";
+    wx.showToast({ title: `${label}待实现`, icon: "none" });
+  },
+
   onSearch(event) {
     this.setData({ query: event.detail.value }, () => this.refresh());
   },
@@ -773,15 +1037,17 @@ Page({
 
   onBeerNameInput(event) {
     const value = event.detail.value;
+    const isEditing = Boolean(this.data.editingCellarId);
     this.setData({
       "form.name": value,
       existingBeerSuggestions: buildExistingBeerSuggestions(this.data.items, value),
-      showExistingBeerSuggestions: true,
+      showExistingBeerSuggestions: !isEditing,
       showHopSuggestions: false
     });
   },
 
   showBeerTips() {
+    if (this.data.editingCellarId) return;
     this.setData({
       existingBeerSuggestions: buildExistingBeerSuggestions(this.data.items, this.data.form.name),
       showExistingBeerSuggestions: true,
@@ -796,6 +1062,8 @@ Page({
 
     this.setData({
       form: toEditForm(item),
+      editingCellarId: "",
+      editingCellarOriginalImagePath: "",
       showExistingBeerSuggestions: false,
       showBrewerySuggestions: false
     });
@@ -1138,14 +1406,14 @@ Page({
 
   choosePhoto() {
     const handlePath = (tempFilePath) => {
-      wx.getFileSystemManager().saveFile({
-        tempFilePath,
-        success: (result) => {
-          this.setData({ "form.imagePath": result.savedFilePath });
-        },
-        fail: () => {
-          this.setData({ "form.imagePath": tempFilePath });
-        }
+      const currentPath = this.data.form.imagePath;
+      const originalPath = this.data.editingCellarOriginalImagePath;
+      saveImageFile(tempFilePath).then((savedFilePath) => {
+        const cleanup = currentPath && currentPath !== originalPath && currentPath !== savedFilePath
+          ? removeLocalFile(currentPath)
+          : Promise.resolve(false);
+        this.setData({ "form.imagePath": savedFilePath });
+        return cleanup;
       });
     };
 
@@ -1169,19 +1437,24 @@ Page({
   },
 
   removePhoto() {
+    const currentPath = this.data.form.imagePath;
+    const originalPath = this.data.editingCellarOriginalImagePath;
     this.setData({ "form.imagePath": "" });
+    if (currentPath && currentPath !== originalPath) {
+      removeLocalFile(currentPath);
+    }
   },
 
   chooseBarPhoto() {
     const handlePath = (tempFilePath) => {
-      wx.getFileSystemManager().saveFile({
-        tempFilePath,
-        success: (result) => {
-          this.setData({ "barForm.imagePath": result.savedFilePath });
-        },
-        fail: () => {
-          this.setData({ "barForm.imagePath": tempFilePath });
-        }
+      const currentPath = this.data.barForm.imagePath;
+      const originalPath = this.data.editingBarOriginalImagePath;
+      saveImageFile(tempFilePath).then((savedFilePath) => {
+        const cleanup = currentPath && currentPath !== originalPath && currentPath !== savedFilePath
+          ? removeLocalFile(currentPath)
+          : Promise.resolve(false);
+        this.setData({ "barForm.imagePath": savedFilePath });
+        return cleanup;
       });
     };
 
@@ -1205,7 +1478,12 @@ Page({
   },
 
   removeBarPhoto() {
+    const currentPath = this.data.barForm.imagePath;
+    const originalPath = this.data.editingBarOriginalImagePath;
     this.setData({ "barForm.imagePath": "" });
+    if (currentPath && currentPath !== originalPath) {
+      removeLocalFile(currentPath);
+    }
   },
 
   previewPhoto(event) {
@@ -1218,37 +1496,71 @@ Page({
   },
 
   resetForm() {
+    this.cleanupCellarFormDraftImage().finally(() => {
+      this.setData({
+        form: createEmptyForm(),
+        editingCellarId: "",
+        editingCellarOriginalImagePath: "",
+        showExistingBeerSuggestions: false,
+        existingBeerSuggestions: [],
+        showBrewerySuggestions: false,
+        brewerySuggestions: breweryOptions.slice(0, 8),
+        showHopSuggestions: false,
+        hopSuggestions: hopOptions.slice(0, 8)
+      });
+    });
+  },
+
+  beginCellarEdit(item) {
     this.setData({
-      form: createEmptyForm(),
+      activeTab: "add",
+      editingCellarId: item.id,
+      editingCellarOriginalImagePath: item.imagePath || "",
+      form: toEditForm(item),
       showExistingBeerSuggestions: false,
       existingBeerSuggestions: [],
       showBrewerySuggestions: false,
       brewerySuggestions: breweryOptions.slice(0, 8),
       showHopSuggestions: false,
-      hopSuggestions: hopOptions.slice(0, 8)
+      hopSuggestions: hopOptions.slice(0, 8),
+      actionMenuId: "",
+      actionMenuKind: "",
+      actionMenuStatus: "",
+      actionMenuStyle: ""
     });
   },
 
   saveNewItem() {
-    const { form, items } = this.data;
-    if (!form.name.trim()) {
-      wx.showToast({ title: "请填写名称", icon: "none" });
-      return;
-    }
-    if (styleOptions[form.styleIndex].value === "custom" && !form.customStyle.trim()) {
-      wx.showToast({ title: "请填写风格", icon: "none" });
+    const { form, items, editingCellarId, editingCellarOriginalImagePath } = this.data;
+    const validationError = validateCellarForm(form);
+    if (validationError) {
+      wx.showToast({ title: validationError, icon: "none" });
       return;
     }
 
-    const nextItems = mergeOrInsertItem(items, buildItemFromForm(form));
-    const mergedExisting = nextItems.length === items.length;
+    const previousItem = editingCellarId ? items.find((entry) => entry.id === editingCellarId) : null;
+    const nextItem = buildItemFromForm(form, editingCellarId, previousItem);
+    const nextItems = editingCellarId
+      ? items.map((entry) => (entry.id === editingCellarId ? nextItem : entry))
+      : mergeOrInsertItem(items, nextItem);
+    const mergedExisting = !editingCellarId && nextItems.length === items.length;
+    const removedImagePath = editingCellarOriginalImagePath
+      && editingCellarOriginalImagePath !== nextItem.imagePath
+      ? editingCellarOriginalImagePath
+      : "";
+
     saveItems(nextItems);
-    wx.showToast({ title: mergedExisting ? "已合并数量" : "已保存", icon: "success" });
+    if (removedImagePath) {
+      removeLocalFile(removedImagePath);
+    }
+    wx.showToast({ title: editingCellarId ? "已更新" : (mergedExisting ? "已合并数量" : "已保存"), icon: "success" });
     this.setData(
       {
         items: nextItems,
-        activeTab: "stats",
+        activeTab: editingCellarId ? "query" : "stats",
         form: createEmptyForm(),
+        editingCellarId: "",
+        editingCellarOriginalImagePath: "",
         showExistingBeerSuggestions: false,
         existingBeerSuggestions: [],
         showBrewerySuggestions: false,
@@ -1407,28 +1719,24 @@ Page({
   },
 
   resetBarForm() {
-    this.setData({
-      editingBarId: "",
-      barForm: createEmptyBarForm(),
-      ...this.getBarRegionState("", ""),
-      showBarVenueSuggestions: false,
-      showBarHopSuggestions: false,
-      barHopSuggestions: hopOptions.slice(0, 8)
+    this.cleanupBarFormDraftImage().finally(() => {
+      this.setData({
+        editingBarId: "",
+        editingBarOriginalImagePath: "",
+        barForm: createEmptyBarForm(),
+        ...this.getBarRegionState("", ""),
+        showBarVenueSuggestions: false,
+        showBarHopSuggestions: false,
+        barHopSuggestions: hopOptions.slice(0, 8)
+      });
     });
   },
 
   saveBarItem() {
-    const { barForm, editingBarId, barItems } = this.data;
-    if (!barForm.venue.trim()) {
-      wx.showToast({ title: "请填写酒吧", icon: "none" });
-      return;
-    }
-    if (!barForm.name.trim()) {
-      wx.showToast({ title: "请填写酒名", icon: "none" });
-      return;
-    }
-    if (styleOptions[barForm.styleIndex].value === "custom" && !barForm.customStyle.trim()) {
-      wx.showToast({ title: "请填写风格", icon: "none" });
+    const { barForm, editingBarId, editingBarOriginalImagePath, barItems } = this.data;
+    const validationError = validateBarForm(barForm);
+    if (validationError) {
+      wx.showToast({ title: validationError, icon: "none" });
       return;
     }
 
@@ -1436,13 +1744,21 @@ Page({
     const nextItems = editingBarId
       ? barItems.map((entry) => (entry.id === editingBarId ? item : entry))
       : [item, ...barItems];
+    const removedImagePath = editingBarOriginalImagePath
+      && editingBarOriginalImagePath !== item.imagePath
+      ? editingBarOriginalImagePath
+      : "";
 
     saveBarItems(nextItems);
+    if (removedImagePath) {
+      removeLocalFile(removedImagePath);
+    }
     wx.showToast({ title: "已保存", icon: "success" });
     this.setData(
       {
         barItems: nextItems,
         editingBarId: "",
+        editingBarOriginalImagePath: "",
         barActiveTab: "query",
         barForm: createEmptyBarForm(),
         showBarHopSuggestions: false,
@@ -1459,6 +1775,7 @@ Page({
     const barForm = toBarEditForm(item);
     this.setData({
       editingBarId: id,
+      editingBarOriginalImagePath: item.imagePath || "",
       barForm,
       ...this.getBarRegionState(barForm.country, barForm.city),
       barActiveTab: "add",
@@ -1478,6 +1795,7 @@ Page({
       success: (result) => {
         if (!result.confirm) return;
         const nextItems = this.data.barItems.filter((entry) => entry.id !== id);
+        removeLocalFiles([item.imagePath]);
         saveBarItems(nextItems);
         this.setData({ barItems: nextItems, actionMenuId: "" }, () => this.refresh());
       }
@@ -1523,8 +1841,9 @@ Page({
 
   editItem(event) {
     const id = event.currentTarget.dataset.id;
-    this.setData({ actionMenuId: "" });
-    wx.navigateTo({ url: `/pages/add/index?id=${id}` });
+    const item = this.data.items.find((entry) => entry.id === id);
+    if (!item) return;
+    this.beginCellarEdit(item);
   },
 
   deleteItem(event) {
@@ -1539,6 +1858,7 @@ Page({
       success: (result) => {
         if (!result.confirm) return;
         const nextItems = this.data.items.filter((entry) => entry.id !== id);
+        removeLocalFiles([item.imagePath]);
         saveItems(nextItems);
         this.setData({ items: nextItems, actionMenuId: "" }, () => this.refresh());
       }
@@ -1565,7 +1885,11 @@ Page({
       confirmColor: "#b33a2b",
       success: (result) => {
         if (!result.confirm) return;
+        const imagePaths = this.data.items
+          .filter((entry) => idSet[entry.id])
+          .map((entry) => entry.imagePath);
         const nextItems = this.data.items.filter((entry) => !idSet[entry.id]);
+        removeLocalFiles(imagePaths);
         saveItems(nextItems);
         this.setData({ items: nextItems, actionMenuId: "" }, () => this.refresh());
       }
@@ -1578,15 +1902,27 @@ Page({
   },
 
   restoreSamples() {
+    if (!ENABLE_TEST_SEED_DATA) {
+      wx.showToast({ title: "测试数据已关闭", icon: "none" });
+      return;
+    }
     wx.showModal({
       title: "恢复示例",
       content: "会覆盖当前库存，继续？",
       confirmColor: "#ffc000",
       success: (result) => {
         if (!result.confirm) return;
+        const imagePaths = this.data.items.map((item) => item.imagePath);
         const items = sampleItems.map((item) => ({ ...item, id: uuid() }));
+        removeLocalFiles(imagePaths);
         saveItems(items);
-        this.setData({ items, activeTab: "stats" }, () => this.refresh());
+        this.setData({
+          items,
+          activeTab: "stats",
+          form: createEmptyForm(),
+          editingCellarId: "",
+          editingCellarOriginalImagePath: ""
+        }, () => this.refresh());
       }
     });
   }
