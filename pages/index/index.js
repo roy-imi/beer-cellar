@@ -33,6 +33,16 @@ const {
   removeLocalFiles
 } = require("../../utils/media");
 const {
+  buildBackupPayload,
+  summarizePayload,
+  parseBackupText,
+  persistBackupPayload,
+  saveBackupFileRecord,
+  clearBackupFiles,
+  buildCacheSummary,
+  buildBackupFileName
+} = require("../../utils/backup");
+const {
   loadDevUser,
   loginDevUser,
   logoutDevUser,
@@ -138,6 +148,13 @@ function dateDiffInDays(a, b) {
   return Math.round((bDate - aDate) / 86400000);
 }
 
+function formatBackupTime(dateValue) {
+  if (!dateValue) return "";
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${padNumber(date.getMonth() + 1)}-${padNumber(date.getDate())} ${padNumber(date.getHours())}:${padNumber(date.getMinutes())}`;
+}
+
 Page({
   data: {
     activeModule: "cellar",
@@ -214,7 +231,14 @@ Page({
     hopOptions,
     sizeUnitOptions,
     untappdEnabled: untappdConfig.enabled,
-    untappdStatusText: getUntappdStatusText()
+    untappdStatusText: getUntappdStatusText(),
+    showUtilityPanel: false,
+    utilityPanelMode: "",
+    exportText: "",
+    exportSummary: null,
+    backupFilePath: "",
+    importText: "",
+    cacheSummary: null
   },
 
   onLoad() {
@@ -315,6 +339,27 @@ Page({
 
   closeSideDrawer() {
     this.setData({ showSideDrawer: false });
+  },
+
+  openUtilityPanel(mode, extraData = {}) {
+    this.setData({
+      showSideDrawer: false,
+      showUtilityPanel: true,
+      utilityPanelMode: mode,
+      ...extraData
+    });
+  },
+
+  closeUtilityPanel() {
+    this.setData({
+      showUtilityPanel: false,
+      utilityPanelMode: "",
+      exportText: "",
+      exportSummary: null,
+      backupFilePath: "",
+      importText: "",
+      cacheSummary: null
+    });
   },
 
   promptDevLogin() {
@@ -1012,7 +1057,202 @@ Page({
 
   showDrawerAction(event) {
     const label = event.currentTarget.dataset.label || "该功能";
-    wx.showToast({ title: `${label}待实现`, icon: "none" });
+    if (label === "图表统计") {
+      this.closeSideDrawer();
+      if (this.data.activeModule === "bar") {
+        this.setData({ barActiveTab: "stats" });
+        return;
+      }
+      this.setData({
+        activeModule: this.data.activeModule === "favorites" ? "cellar" : this.data.activeModule,
+        activeTab: "stats"
+      });
+      return;
+    }
+    if (label === "导出记录") {
+      this.openExportPanel();
+      return;
+    }
+    if (label === "导入记录") {
+      this.openImportPanel();
+      return;
+    }
+    if (label === "缓存管理" || label === "设置") {
+      this.openCachePanel();
+      return;
+    }
+    if (label === "反馈与建议") {
+      this.openUtilityPanel("feedback");
+      return;
+    }
+    if (label === "Untappd 配置说明") {
+      this.openUtilityPanel("untappd");
+      return;
+    }
+    if (label === "关于啤记") {
+      this.openUtilityPanel("about");
+      return;
+    }
+    wx.showToast({ title: `${label}稍后开放`, icon: "none" });
+  },
+
+  openExportPanel() {
+    const payload = buildBackupPayload();
+    this.openUtilityPanel("export", {
+      exportText: JSON.stringify(payload, null, 2),
+      exportSummary: summarizePayload(payload),
+      backupFilePath: ""
+    });
+  },
+
+  copyExportData() {
+    if (!this.data.exportText) return;
+    wx.setClipboardData({
+      data: this.data.exportText,
+      success: () => wx.showToast({ title: "备份已复制", icon: "success" })
+    });
+  },
+
+  saveExportFile() {
+    if (!this.data.exportText) return;
+    const userDataPath = wx.env && wx.env.USER_DATA_PATH;
+    if (!userDataPath) {
+      wx.showToast({ title: "当前环境不支持", icon: "none" });
+      return;
+    }
+
+    const fileName = buildBackupFileName();
+    const filePath = `${userDataPath}/${fileName}`;
+    wx.getFileSystemManager().writeFile({
+      filePath,
+      data: this.data.exportText,
+      encoding: "utf8",
+      success: () => {
+        saveBackupFileRecord({
+          path: filePath,
+          name: fileName,
+          createdAt: new Date().toISOString()
+        });
+        this.setData({ backupFilePath: filePath });
+        wx.showToast({ title: "已保存到本地", icon: "success" });
+      },
+      fail: () => {
+        wx.showToast({ title: "保存失败", icon: "none" });
+      }
+    });
+  },
+
+  openImportPanel() {
+    this.openUtilityPanel("import", {
+      importText: ""
+    });
+  },
+
+  onImportTextInput(event) {
+    this.setData({ importText: event.detail.value });
+  },
+
+  confirmImportData() {
+    let payload;
+    try {
+      payload = parseBackupText(this.data.importText);
+    } catch (error) {
+      const messageMap = {
+        EMPTY_BACKUP: "请先粘贴备份内容",
+        INVALID_BACKUP_JSON: "备份 JSON 格式不正确",
+        INVALID_BACKUP_SHAPE: "备份结构不符合啤记格式"
+      };
+      wx.showToast({ title: messageMap[error.message] || "导入失败", icon: "none" });
+      return;
+    }
+
+    const summary = summarizePayload(payload);
+    wx.showModal({
+      title: "导入记录",
+      content: `将导入库存 ${summary.cellarCount} 条、酒吧 ${summary.barCount} 条，并覆盖当前本地记录。继续？`,
+      confirmColor: "#ffc000",
+      success: (result) => {
+        if (!result.confirm) return;
+        persistBackupPayload(payload);
+        this.closeUtilityPanel();
+        this.refreshFromStorage();
+        wx.showToast({ title: "已导入", icon: "success" });
+      }
+    });
+  },
+
+  openCachePanel() {
+    this.openUtilityPanel("cache", {
+      cacheSummary: buildCacheSummary(this.data.items, this.data.barItems)
+    });
+  },
+
+  clearSavedBackupFiles() {
+    const cacheSummary = this.data.cacheSummary || buildCacheSummary(this.data.items, this.data.barItems);
+    if (!cacheSummary.backupFileCount) {
+      wx.showToast({ title: "没有备份文件", icon: "none" });
+      return;
+    }
+    wx.showModal({
+      title: "清理备份文件",
+      content: `删除本地 ${cacheSummary.backupFileCount} 个备份文件？不会删除当前记录。`,
+      confirmColor: "#b33a2b",
+      success: (result) => {
+        if (!result.confirm) return;
+        clearBackupFiles().finally(() => {
+          this.setData({
+            cacheSummary: buildCacheSummary(this.data.items, this.data.barItems)
+          });
+          wx.showToast({ title: "已清理", icon: "success" });
+        });
+      }
+    });
+  },
+
+  clearAllLocalData() {
+    wx.showModal({
+      title: "清空本地数据",
+      content: "会删除库存、酒吧记录、照片和本地备份文件。请先导出备份。",
+      confirmColor: "#b33a2b",
+      success: (result) => {
+        if (!result.confirm) return;
+        const imagePaths = this.data.items
+          .concat(this.data.barItems)
+          .map((item) => item.imagePath)
+          .concat([
+            this.data.form.imagePath,
+            this.data.barForm.imagePath
+          ])
+          .filter(Boolean);
+        Promise.all([
+          removeLocalFiles(imagePaths),
+          clearBackupFiles()
+        ]).finally(() => {
+          saveItems([]);
+          saveBarItems([]);
+          this.closeUtilityPanel();
+          this.setData({
+            items: [],
+            barItems: [],
+            form: createEmptyForm(),
+            barForm: createEmptyBarForm(),
+            editingCellarId: "",
+            editingCellarOriginalImagePath: "",
+            editingBarId: "",
+            editingBarOriginalImagePath: ""
+          }, () => this.refresh());
+          wx.showToast({ title: "本地数据已清空", icon: "success" });
+        });
+      }
+    });
+  },
+
+  copyFeedbackInfo() {
+    const text = "啤记反馈\n问题描述：\n复现步骤：\n期望结果：\n";
+    wx.setClipboardData({
+      data: text,
+      success: () => wx.showToast({ title: "反馈模板已复制", icon: "success" })
+    });
   },
 
   onSearch(event) {

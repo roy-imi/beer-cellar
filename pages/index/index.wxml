@@ -538,6 +538,100 @@
     </view>
   </view>
 
+  <view wx:if="{{showUtilityPanel}}" class="utility-layer" bindtap="closeUtilityPanel">
+    <view class="utility-panel" catchtap="noop">
+      <view class="utility-head">
+        <text class="utility-title">
+          {{utilityPanelMode == 'export' ? '导出记录' :
+            (utilityPanelMode == 'import' ? '导入记录' :
+            (utilityPanelMode == 'cache' ? '缓存管理' :
+            (utilityPanelMode == 'feedback' ? '反馈与建议' :
+            (utilityPanelMode == 'untappd' ? 'Untappd 配置说明' : '关于啤记'))))}}
+        </text>
+        <view class="utility-close" bindtap="closeUtilityPanel">×</view>
+      </view>
+
+      <view wx:if="{{utilityPanelMode == 'export'}}" class="utility-body">
+        <text class="utility-copy">库存 {{exportSummary ? exportSummary.cellarCount : 0}} 条 · 酒吧 {{exportSummary ? exportSummary.barCount : 0}} 条 · 图片引用 {{exportSummary ? exportSummary.imageCount : 0}} 个</text>
+        <textarea class="utility-textarea" value="{{exportText}}" maxlength="-1" disabled></textarea>
+        <text wx:if="{{backupFilePath}}" class="utility-copy">最近已保存到：{{backupFilePath}}</text>
+        <view class="utility-actions">
+          <view class="btn secondary utility-btn" bindtap="copyExportData">复制 JSON</view>
+          <view class="btn primary utility-btn" bindtap="saveExportFile">保存到本地</view>
+        </view>
+      </view>
+
+      <view wx:if="{{utilityPanelMode == 'import'}}" class="utility-body">
+        <text class="utility-copy">粘贴之前导出的啤记备份 JSON。导入会覆盖当前本地记录。</text>
+        <textarea class="utility-textarea" value="{{importText}}" maxlength="-1" placeholder="把备份 JSON 粘贴到这里" bindinput="onImportTextInput"></textarea>
+        <view class="utility-actions">
+          <view class="btn primary utility-btn" bindtap="confirmImportData">开始导入</view>
+        </view>
+      </view>
+
+      <view wx:if="{{utilityPanelMode == 'cache'}}" class="utility-body">
+        <view class="utility-stat-list">
+          <view class="utility-stat-row">
+            <text>库存记录</text>
+            <text>{{cacheSummary ? cacheSummary.cellarCount : 0}} 条</text>
+          </view>
+          <view class="utility-stat-row">
+            <text>酒吧记录</text>
+            <text>{{cacheSummary ? cacheSummary.barCount : 0}} 条</text>
+          </view>
+          <view class="utility-stat-row">
+            <text>照片引用</text>
+            <text>{{cacheSummary ? cacheSummary.imageCount : 0}} 个</text>
+          </view>
+          <view class="utility-stat-row">
+            <text>备份文件</text>
+            <text>{{cacheSummary ? cacheSummary.backupFileCount : 0}} 个</text>
+          </view>
+          <view class="utility-stat-row">
+            <text>估算体积</text>
+            <text>{{cacheSummary ? cacheSummary.approxSizeText : '0 B'}}</text>
+          </view>
+        </view>
+        <view class="utility-actions stack">
+          <view class="btn secondary utility-btn" bindtap="clearSavedBackupFiles">清理备份文件</view>
+          <view class="btn secondary utility-btn danger-fill" bindtap="clearAllLocalData">清空全部本地数据</view>
+        </view>
+      </view>
+
+      <view wx:if="{{utilityPanelMode == 'feedback'}}" class="utility-body">
+        <text class="utility-copy">建议固定记录问题描述、复现步骤和期望结果，便于后续自己排查和迭代。</text>
+        <view class="utility-note-card">
+          <text class="utility-note-title">推荐反馈模板</text>
+          <text class="utility-note-line">问题描述：</text>
+          <text class="utility-note-line">复现步骤：</text>
+          <text class="utility-note-line">期望结果：</text>
+        </view>
+        <view class="utility-actions">
+          <view class="btn primary utility-btn" bindtap="copyFeedbackInfo">复制模板</view>
+        </view>
+      </view>
+
+      <view wx:if="{{utilityPanelMode == 'untappd'}}" class="utility-body">
+        <text class="utility-copy">当前小程序仍使用本地存储。Untappd 查询依赖云函数和服务端凭据，当前未启用。</text>
+        <view class="utility-note-card">
+          <text class="utility-note-title">启用步骤</text>
+          <text class="utility-note-line">1. 准备 `client_id` / `client_secret`</text>
+          <text class="utility-note-line">2. 在云函数里封装查询接口</text>
+          <text class="utility-note-line">3. 打开 `utils/untappd.js` 的启用开关</text>
+        </view>
+      </view>
+
+      <view wx:if="{{utilityPanelMode == 'about'}}" class="utility-body">
+        <text class="utility-copy">啤记当前定位是长期自用的喝酒记录工具，核心是库存可信、回看方便、备份可恢复。</text>
+        <view class="utility-note-card">
+          <text class="utility-note-title">当前能力</text>
+          <text class="utility-note-line">家里库存 / 外面记录 / 喜欢的酒 / 喝酒日历</text>
+          <text class="utility-note-line">本地备份导出 / 粘贴导入 / 缓存清理</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
   <view wx:if="{{actionMenuId}}" class="action-layer" bindtap="closeActionMenu">
     <view class="action-popover {{actionMenuKind == 'bar' ? 'bar-action-popover' : ''}}" style="{{actionMenuStyle}}" catchtap="noop">
       <text class="action-title">更多操作</text>

@@ -10,7 +10,7 @@ const LIKED_HOME_ENGLISH_NAME_KEY = "beer-cellar-liked-home-english-name-2026060
 const DEFAULT_SIZE_MIGRATION_KEY = "beer-cellar-default-size-migrated-20260603";
 const BAR_SAMPLE_IMPORT_KEY = "beer-cellar-bar-samples-imported-20260604";
 const DEFAULT_BEER_SIZE = "473ml";
-const ENABLE_TEST_SEED_DATA = true;
+const ENABLE_TEST_SEED_DATA = false;
 
 const sizeUnitOptions = [
   { label: "毫升 ml", value: "ml" },
@@ -773,7 +773,10 @@ function loadItems() {
       wx.setStorageSync(LIKED_HOME_ENGLISH_NAME_KEY, true);
     }
     if (!defaultSizeMigrated) {
-      nextItems = nextItems.map((item) => ({ ...item, size: DEFAULT_BEER_SIZE }));
+      nextItems = nextItems.map((item) => {
+        if (item.size && parseSize(item.size).amount) return item;
+        return { ...item, size: DEFAULT_BEER_SIZE };
+      });
       wx.setStorageSync(DEFAULT_SIZE_MIGRATION_KEY, true);
     }
     wx.setStorageSync(STORAGE_KEY, nextItems);
@@ -825,7 +828,10 @@ function loadItems() {
     }
 
     if (!defaultSizeMigrated) {
-      nextItems = nextItems.map((item) => ({ ...item, size: DEFAULT_BEER_SIZE }));
+      nextItems = nextItems.map((item) => {
+        if (item.size && parseSize(item.size).amount) return item;
+        return { ...item, size: DEFAULT_BEER_SIZE };
+      });
       wx.setStorageSync(DEFAULT_SIZE_MIGRATION_KEY, true);
     }
 
@@ -851,7 +857,10 @@ function loadItems() {
       wx.setStorageSync(LIKED_HOME_ENGLISH_NAME_KEY, true);
     }
     if (!defaultSizeMigrated) {
-      nextItems = nextItems.map((item) => ({ ...item, size: DEFAULT_BEER_SIZE }));
+      nextItems = nextItems.map((item) => {
+        if (item.size && parseSize(item.size).amount) return item;
+        return { ...item, size: DEFAULT_BEER_SIZE };
+      });
       wx.setStorageSync(DEFAULT_SIZE_MIGRATION_KEY, true);
     }
     const sanitizedItems = nextItems.map(sanitizeItem);
@@ -870,7 +879,7 @@ function loadItems() {
 }
 
 function saveItems(items) {
-  wx.setStorageSync(STORAGE_KEY, items);
+  wx.setStorageSync(STORAGE_KEY, (items || []).map(sanitizeItem));
 }
 
 function loadBarItems() {
@@ -886,7 +895,7 @@ function loadBarItems() {
 }
 
 function saveBarItems(items) {
-  wx.setStorageSync(BAR_STORAGE_KEY, items);
+  wx.setStorageSync(BAR_STORAGE_KEY, (items || []).map(sanitizeBarItem));
 }
 
 function toEditForm(item) {
