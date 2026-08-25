@@ -16,5 +16,15 @@ image {
 }
 
 button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin: 0;
+  line-height: 1.3;
+  text-align: center;
+}
+
+text {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }

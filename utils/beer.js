@@ -149,6 +149,59 @@ const hopOptions = [
   { label: "HBC 586 - HBC 586", value: "HBC 586" }
 ];
 
+function splitBilingualOption(option) {
+  const label = String(option && option.label || "");
+  const separatorIndex = label.lastIndexOf(" - ");
+  if (separatorIndex < 0) {
+    const value = String(option && option.value || label);
+    return { english: value, chinese: value };
+  }
+  return {
+    english: label.slice(0, separatorIndex).trim(),
+    chinese: label.slice(separatorIndex + 3).trim()
+  };
+}
+
+function normalizeDisplayLanguage(language) {
+  return language === "en" ? "en" : "zh";
+}
+
+function findBilingualOption(options, value) {
+  const normalized = normalizeComparable(value);
+  if (!normalized) return null;
+  return options.find((option) => {
+    const names = splitBilingualOption(option);
+    return [option.value, option.label, names.english, names.chinese]
+      .some((candidate) => normalizeComparable(candidate) === normalized);
+  }) || null;
+}
+
+function formatStyleDisplayName(value, language = "zh") {
+  const rawValue = String(value || "").trim();
+  if (!rawValue) return "";
+  const option = findBilingualOption(styleOptions, rawValue);
+  if (!option || option.value === "custom") return rawValue;
+  const names = splitBilingualOption(option);
+  return normalizeDisplayLanguage(language) === "en" ? names.english : names.chinese;
+}
+
+function formatHopDisplayName(value, language = "zh") {
+  const rawValue = String(value || "").trim();
+  if (!rawValue) return "";
+  const normalizedLanguage = normalizeDisplayLanguage(language);
+  return rawValue
+    .split(/[,，、\n]+/)
+    .map((hop) => hop.trim())
+    .filter(Boolean)
+    .map((hop) => {
+      const option = findBilingualOption(hopOptions, hop);
+      if (!option) return hop;
+      const names = splitBilingualOption(option);
+      return normalizedLanguage === "en" ? names.english : names.chinese;
+    })
+    .join(normalizedLanguage === "en" ? ", " : "、");
+}
+
 const sampleItems = [
   {
     id: "sample-1",
@@ -432,7 +485,7 @@ function createEmptyForm() {
     customStyle: "",
     hops: "",
     brewery: "",
-    date: today(),
+    date: "",
     quantity: 1,
     sizeAmount: "473",
     sizeUnitIndex: 0,
@@ -558,16 +611,90 @@ function daysSince(dateValue) {
   return Math.floor((now - date) / 86400000);
 }
 
-function freshness(item) {
+function resolveFreshnessRule(item, settings = {}) {
+  const defaultRule = settings.freshnessDefaultRule || {};
+  const fallbackRule = {
+    freshDays: Number.isFinite(Number(defaultRule.freshDays)) ? Number(defaultRule.freshDays) : 45,
+    priorityDays: Number.isFinite(Number(defaultRule.priorityDays)) ? Number(defaultRule.priorityDays) : 120
+  };
+  if (!settings.freshnessRulesEnabled || !Array.isArray(settings.freshnessStyleRules)) {
+    return fallbackRule;
+  }
+  const styleSearchText = [
+    item.style,
+    formatStyleDisplayName(item.style, "zh"),
+    formatStyleDisplayName(item.style, "en")
+  ].join(" ").toLowerCase();
+  const matchedRule = settings.freshnessStyleRules
+    .filter((rule) => rule && String(rule.keyword || "").trim())
+    .sort((a, b) => String(b.keyword).length - String(a.keyword).length)
+    .find((rule) => styleSearchText.includes(String(rule.keyword).trim().toLowerCase()));
+  if (!matchedRule) return fallbackRule;
+  return {
+    freshDays: Number(matchedRule.freshDays),
+    priorityDays: Number(matchedRule.priorityDays)
+  };
+}
+
+function freshness(item, settings = {}) {
   if (item.type !== "beer") return { text: "可长期存放", level: "ok", priority: 0 };
   const age = daysSince(item.date);
-  if (age <= 45) return { text: `${age} 天`, level: "ok", priority: 0 };
-  if (age <= 120) return { text: `${age} 天`, level: "warn", priority: 1 };
+  if (!Number.isFinite(age)) return { text: "日期待补", level: "warn", priority: 1 };
+  if (age < 0) return { text: "日期异常", level: "old", priority: 2 };
+  const rule = resolveFreshnessRule(item, settings);
+  if (age <= rule.freshDays) return { text: `${age} 天`, level: "ok", priority: 0 };
+  if (age <= rule.priorityDays) return { text: `${age} 天`, level: "warn", priority: 1 };
   return { text: `${age} 天`, level: "old", priority: 2 };
 }
 
 function uuid() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeCalendarDate(value) {
+  const rawValue = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(rawValue)) return rawValue;
+  const date = new Date(rawValue);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function inferLegacyIntakeDate(item) {
+  const explicitDate = normalizeCalendarDate(item.stockedAt || item.createdAt);
+  if (explicitDate) return explicitDate;
+  const timestamp = Number(String(item.id || "").split("-")[0]);
+  if (!Number.isFinite(timestamp) || timestamp < 946684800000 || timestamp > Date.now() + 86400000) return "";
+  return normalizeCalendarDate(new Date(timestamp));
+}
+
+function normalizeIntakeHistory(item) {
+  const source = Array.isArray(item.intakeHistory) ? item.intakeHistory : [];
+  const normalized = source.reduce((events, event, index) => {
+    const date = normalizeCalendarDate(event && event.date);
+    if (!date) return events;
+    const quantity = Math.max(1, Math.round(Number(event.quantity || 0) || 1));
+    const id = String(event.id || `${item.id || "item"}-${date}-${index}`);
+    if (events.some((entry) => entry.id === id)) return events;
+    return events.concat({ id, date, quantity, legacy: Boolean(event.legacy) });
+  }, []);
+  if (normalized.length) return normalized;
+  const legacyDate = inferLegacyIntakeDate(item);
+  if (!legacyDate) return [];
+  return [{
+    id: `legacy-intake-${item.id}`,
+    date: legacyDate,
+    quantity: Math.max(1, Math.round(Number(item.quantity || 0) || 1)),
+    legacy: true
+  }];
+}
+
+function mergeIntakeHistories(...histories) {
+  const seen = {};
+  return histories.flat().reduce((events, event) => {
+    if (!event || !event.id || seen[event.id]) return events;
+    seen[event.id] = true;
+    return events.concat(event);
+  }, []);
 }
 
 function findOptionIndex(options, value) {
@@ -617,6 +744,7 @@ function sanitizeItem(item) {
   }
   const rating = parseRatingValue(nextItem.rating, 5);
   nextItem.rating = rating === null ? "" : rating;
+  nextItem.intakeHistory = normalizeIntakeHistory(nextItem);
   if (nextItem.drunk) {
     nextItem.quantity = 0;
     return nextItem;
@@ -646,6 +774,13 @@ function validateCellarForm(form) {
   }
   if (!parsePositiveNumber(form.sizeAmount)) {
     return "容量需大于 0";
+  }
+  const packagedDate = String(form.date || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(packagedDate)) {
+    return "请选择生产或罐装日期";
+  }
+  if (packagedDate > today()) {
+    return "生产日期不能晚于今天";
   }
   if (parseRatingValue(form.rating, 5) === null) {
     return "Untappd 评分需在 0-5";
@@ -760,6 +895,25 @@ function loadItems() {
   const likedHomeImported = wx.getStorageSync(LIKED_HOME_IMPORT_KEY);
   const likedHomeEnglishNameMigrated = wx.getStorageSync(LIKED_HOME_ENGLISH_NAME_KEY);
   const defaultSizeMigrated = wx.getStorageSync(DEFAULT_SIZE_MIGRATION_KEY);
+  if (!ENABLE_TEST_SEED_DATA) {
+    const sanitizedItems = Array.isArray(stored) ? stored.map(sanitizeItem) : [];
+    if (Array.isArray(stored) && (!sanitizedMigrated || JSON.stringify(stored) !== JSON.stringify(sanitizedItems))) {
+      wx.setStorageSync(STORAGE_KEY, sanitizedItems);
+    }
+    [
+      DATA_SANITIZED_MIGRATION_KEY,
+      CURRENT_FRIDGE_IMPORT_KEY,
+      CURRENT_FRIDGE_DATE_KIND_MIGRATION_KEY,
+      CURRENT_FRIDGE_DRUNK_REIMPORT_KEY,
+      UNDRUNK_ZERO_QUANTITY_FIX_KEY,
+      LIKED_HOME_IMPORT_KEY,
+      LIKED_HOME_ENGLISH_NAME_KEY,
+      DEFAULT_SIZE_MIGRATION_KEY
+    ].forEach((key) => {
+      if (!wx.getStorageSync(key)) wx.setStorageSync(key, true);
+    });
+    return sanitizedItems;
+  }
   if (!imported && ENABLE_TEST_SEED_DATA) {
     const baseItems = Array.isArray(stored) ? stored.filter((item) => !isDefaultSampleItem(item)) : [];
     const importedItems = currentFridgeItems.map((item) => ({ ...item, id: uuid() }));
@@ -908,7 +1062,7 @@ function toEditForm(item) {
     customStyle: isCustomStyle ? item.style || "" : "",
     hops: item.hops || "",
     brewery: item.brewery || "",
-    date: item.date || today(),
+    date: item.date || "",
     quantity: item.quantity,
     sizeAmount: size.amount,
     sizeUnitIndex: size.unitIndex,
@@ -953,6 +1107,10 @@ function buildExistingBeerSuggestions(items, query) {
 function buildItemFromForm(form, editingId, previousItem) {
   const selectedStyle = styleOptions[form.styleIndex] || styleOptions[0];
   const style = selectedStyle.value === "custom" ? form.customStyle.trim() : selectedStyle.value;
+  const quantity = Math.round(parsePositiveNumber(form.quantity) || 0);
+  const intakeHistory = previousItem
+    ? normalizeIntakeHistory(previousItem)
+    : [{ id: `intake-${uuid()}`, date: today(), quantity, legacy: false }];
   return {
     id: editingId || uuid(),
     name: form.name.trim(),
@@ -962,7 +1120,7 @@ function buildItemFromForm(form, editingId, previousItem) {
     brewery: form.brewery.trim(),
     date: form.date,
     dateKind: "packaged",
-    quantity: Math.round(parsePositiveNumber(form.quantity) || 0),
+    quantity,
     size: composeSize(form),
     rating: parseRatingValue(form.rating, 5),
     imagePath: form.imagePath,
@@ -970,7 +1128,8 @@ function buildItemFromForm(form, editingId, previousItem) {
     favorite: previousItem ? Boolean(previousItem.favorite) : false,
     drunk: previousItem ? Boolean(previousItem.drunk) : false,
     drinkDate: previousItem ? previousItem.drinkDate || "" : "",
-    tasteRating: previousItem ? previousItem.tasteRating || "" : ""
+    tasteRating: previousItem ? previousItem.tasteRating || "" : "",
+    intakeHistory
   };
 }
 
@@ -1023,13 +1182,13 @@ function buildBarItemFromForm(form, editingId) {
   };
 }
 
-function formatBarItem(item) {
+function formatBarItem(item, displayOptions = {}) {
   return {
     ...item,
     englishName: item.englishName || "",
     breweryText: item.brewery || "未填写酒厂",
-    styleText: item.style || "未填写风格",
-    hopsText: item.hops || "未填写啤酒花",
+    styleText: formatStyleDisplayName(item.style, displayOptions.styleLanguage) || "未填写风格",
+    hopsText: formatHopDisplayName(item.hops, displayOptions.hopLanguage),
     venueText: item.venue || "未填写酒吧",
     countryText: item.country || "",
     regionText: item.region || "",
@@ -1041,7 +1200,7 @@ function formatBarItem(item) {
   };
 }
 
-function filteredAndSortedBarItems(items, query, status) {
+function filteredAndSortedBarItems(items, query, status, displayOptions = {}) {
   const lowerQuery = query.trim().toLowerCase();
   return items
     .filter((item) => {
@@ -1055,7 +1214,7 @@ function filteredAndSortedBarItems(items, query, status) {
       return [item.name, item.brewery, item.style, item.hops, item.venue, item.country, item.city, item.note].join(" ").toLowerCase().includes(lowerQuery);
     })
     .sort((a, b) => b.date.localeCompare(a.date))
-    .map(formatBarItem);
+    .map((item) => formatBarItem(item, displayOptions));
 }
 
 function normalizeComparable(value) {
@@ -1087,12 +1246,16 @@ function mergeOrInsertItem(items, item) {
     if (index !== matchIndex) return entry;
     return {
       ...entry,
-      quantity: Number(entry.quantity || 0) + Number(item.quantity || 0)
+      quantity: Number(entry.quantity || 0) + Number(item.quantity || 0),
+      intakeHistory: mergeIntakeHistories(
+        normalizeIntakeHistory(entry),
+        normalizeIntakeHistory(item)
+      )
     };
   });
 }
 
-function filteredAndSortedItems(items, query, sortIndex, status) {
+function filteredAndSortedItems(items, query, sortIndex, status, displayOptions = {}) {
   const sort = sortOptions[sortIndex].value;
   const lowerQuery = query.trim().toLowerCase();
 
@@ -1114,15 +1277,15 @@ function filteredAndSortedItems(items, query, sortIndex, status) {
       return b.date.localeCompare(a.date);
     })
     .map((item) => {
-      const fresh = freshness(item);
+      const fresh = freshness(item, displayOptions.freshnessSettings);
       return {
         ...item,
         englishName: item.englishName || "",
         freshText: fresh.text,
         freshLevel: fresh.level,
         breweryText: item.brewery || "未填写酒厂",
-        styleText: item.style || "未填写风格",
-        hopsText: item.hops || "未填写啤酒花",
+        styleText: formatStyleDisplayName(item.style, displayOptions.styleLanguage) || "未填写风格",
+        hopsText: formatHopDisplayName(item.hops, displayOptions.hopLanguage),
         sizeText: item.size || "未填写容量",
         noteText: item.note || "无备注",
         ratingText: item.rating ? `Untappd ${Number(item.rating).toFixed(2)}` : "未填 Untappd",
@@ -1132,15 +1295,15 @@ function filteredAndSortedItems(items, query, sortIndex, status) {
     });
 }
 
-function summarize(items) {
+function summarize(items, freshnessSettings = {}) {
   const beerItems = items.filter((item) => item.type === "beer");
   const active = beerItems.filter((item) => Number(item.quantity) > 0 && !item.drunk);
   const drunk = beerItems.filter((item) => Boolean(item.drunk));
   return {
     activeCount: active.length,
     total: active.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
-    fresh: active.filter((item) => freshness(item).priority === 0).length,
-    aging: active.filter((item) => freshness(item).priority > 0).length,
+    fresh: active.filter((item) => freshness(item, freshnessSettings).priority === 0).length,
+    aging: active.filter((item) => freshness(item, freshnessSettings).priority > 0).length,
     drunk: drunk.length
   };
 }
@@ -1155,12 +1318,17 @@ module.exports = {
   breweryOptions,
   styleOptions,
   hopOptions,
+  formatStyleDisplayName,
+  formatHopDisplayName,
   sampleItems,
   today,
   createEmptyForm,
   createEmptyBarForm,
   freshness,
+  resolveFreshnessRule,
   uuid,
+  normalizeIntakeHistory,
+  mergeIntakeHistories,
   findOptionIndex,
   loadItems,
   saveItems,

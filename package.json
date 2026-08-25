@@ -1,0 +1,8 @@
+{
+  "name": "beer-cellar-miniprogram",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "check:release": "node scripts/verify-release.js"
+  }
+}

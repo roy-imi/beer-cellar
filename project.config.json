@@ -5,7 +5,7 @@
     "include": []
   },
   "setting": {
-    "urlCheck": false,
+    "urlCheck": true,
     "es6": true,
     "enhance": true,
     "postcss": true,
@@ -31,8 +31,9 @@
     }
   },
   "compileType": "miniprogram",
-  "libVersion": "latest",
-  "appid": "wx8343c89be3956e5c",
+  "cloudfunctionRoot": "cloudfunctions/",
+  "libVersion": "3.15.1",
+  "appid": "wx52537f83e1d5b5dc",
   "projectname": "beer-king-miniprogram",
   "condition": {},
   "simulatorPluginLibVersion": {},

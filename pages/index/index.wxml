@@ -1,5 +1,5 @@
-<view class="page">
-  <view class="topbar">
+<view class="page {{(activeModule == 'cellar' && activeTab == 'add') || (activeModule == 'bar' && barActiveTab == 'add') ? 'record-page' : ''}}">
+  <view wx:if="{{!((activeModule == 'cellar' && activeTab == 'add') || (activeModule == 'bar' && barActiveTab == 'add'))}}" class="topbar">
     <view class="menu-button" bindtap="openSideDrawer" aria-label="打开侧边栏">
       <view class="menu-line"></view>
       <view class="menu-line"></view>
@@ -7,12 +7,12 @@
     </view>
     <view class="topbar-copy">
       <text class="topbar-title">{{activeModule == 'cellar' ? '啤记' : (activeModule == 'favorites' ? '喜欢的酒' : '酒吧记录')}}</text>
-      <text class="topbar-subtitle">{{selectedCalendarSummary ? selectedCalendarSummary.dateLabel + ' · 共 ' + selectedCalendarSummary.total + ' 条喝酒记录' : '酒窖与喝酒轨迹'}}</text>
+      <text class="topbar-subtitle">{{selectedCalendarSummary ? selectedCalendarSummary.dateLabel + ' · 共 ' + selectedCalendarSummary.total + ' 条记录' : '酒窖与喝酒轨迹'}}</text>
     </view>
   </view>
 
   <view wx:if="{{activeModule == 'cellar'}}" class="module">
-  <view class="hero">
+  <view wx:if="{{activeTab != 'add'}}" class="hero">
     <view class="stats">
       <view class="stat tappable" data-filter="all" bindtap="openStat">
         <text class="stat-number">{{stats.total}}</text>
@@ -26,17 +26,16 @@
         <text class="stat-number">{{stats.aging}}</text>
         <text class="stat-label">优先喝</text>
       </view>
-      <view class="stat">
+      <view class="stat tappable" data-filter="drunk" bindtap="openStat">
         <text class="stat-number">{{stats.drunk}}</text>
         <text class="stat-label">已喝</text>
       </view>
     </view>
   </view>
 
-  <view class="tabs">
-    <view class="tab {{activeTab == 'stats' ? 'active' : ''}}" data-tab="stats" bindtap="switchTab">统计</view>
-    <view class="tab {{activeTab == 'query' ? 'active' : ''}}" data-tab="query" bindtap="switchTab">查询</view>
-    <view class="tab {{activeTab == 'add' ? 'active' : ''}}" data-tab="add" bindtap="switchTab">记录</view>
+  <view wx:if="{{activeTab != 'add'}}" class="tabs">
+    <view class="tab {{activeTab == 'stats' ? 'active' : ''}}" data-tab="stats" bindtap="switchTab">总览</view>
+    <view class="tab {{activeTab == 'query' ? 'active' : ''}}" data-tab="query" bindtap="switchTab">明细</view>
   </view>
 
   <view wx:if="{{activeTab == 'stats'}}" class="panel stats-panel">
@@ -44,81 +43,106 @@
       <view>
         <text class="panel-title">库存统计</text>
       </view>
-      <view class="btn secondary small" bindtap="showQuery">查询</view>
-    </view>
-
-    <view wx:if="{{breweryStats.length > 0}}" class="dimension-section">
-      <view class="dimension-head">
-        <text>啤酒厂</text>
-        <text>条目 / 剩余</text>
-      </view>
-      <view wx:for="{{breweryStats}}" wx:key="key" class="dimension-row">
-        <text>{{item.label}}</text>
-        <text>{{item.count}} / {{item.quantity}}</text>
+      <view class="stats-panel-actions">
+        <view class="stats-order-toggle" bindtap="toggleStatsOrderEditor">{{isEditingStatsOrder ? '完成' : '调整顺序'}}</view>
       </view>
     </view>
 
-    <view wx:if="{{styleStats.length > 0}}" class="dimension-section">
-      <view class="dimension-head">
-        <text>啤酒风格</text>
-        <text>条目 / 剩余</text>
-      </view>
-      <block wx:for="{{styleStats}}" wx:for-item="styleGroup" wx:key="key">
-        <view class="dimension-row">
-          <text>{{styleGroup.label}}</text>
-          <text>{{styleGroup.count}} / {{styleGroup.quantity}}</text>
+    <view wx:if="{{isEditingStatsOrder}}" class="stats-order-editor">
+      <text class="stats-order-hint">按住右侧拖动柄，上下拖动调整统计模块顺序</text>
+      <view
+        wx:for="{{statsSections}}"
+        wx:key="key"
+        class="stats-order-item {{statsOrderDragKey == item.key ? 'dragging' : ''}}"
+        data-key="{{item.key}}"
+        catchtouchstart="startStatsOrderDrag"
+        catchtouchmove="moveStatsOrderDrag"
+        catchtouchend="finishStatsOrderDrag"
+        catchtouchcancel="finishStatsOrderDrag"
+      >
+        <view class="stats-order-number">{{index + 1}}</view>
+        <text class="stats-order-title">{{item.title}}</text>
+        <view class="stats-order-handle" aria-label="拖动排序">
+          <view></view>
+          <view></view>
+          <view></view>
         </view>
-        <view wx:for="{{styleGroup.children}}" wx:for-item="child" wx:key="key" class="dimension-row dimension-child-row">
-          <text>{{child.label}}</text>
-          <text>{{child.count}} / {{child.quantity}}</text>
+      </view>
+    </view>
+
+    <block wx:else>
+      <block wx:for="{{statsSections}}" wx:for-item="section" wx:key="key">
+        <view wx:if="{{section.rows.length > 0}}" class="dimension-section">
+          <view class="dimension-head">
+            <text>{{section.title}}</text>
+            <text>{{section.metric}}</text>
+          </view>
+          <block wx:for="{{section.rows}}" wx:for-item="row" wx:key="key">
+            <view
+              class="dimension-row dimension-row-link"
+              hover-class="dimension-row-pressed"
+              data-dimension="{{section.key}}"
+              data-key="{{row.key}}"
+              data-label="{{row.label}}"
+              data-scope="parent"
+              bindtap="openDimensionStat"
+              aria-role="button"
+              aria-label="查询{{section.title}}{{row.label}}"
+            >
+              <text>{{row.label}}</text>
+              <view class="dimension-row-value">
+                <text>{{row.count}} / {{row.quantity}}</text>
+                <text class="dimension-drill-icon">›</text>
+              </view>
+            </view>
+            <view
+              wx:if="{{section.key == 'style'}}"
+              wx:for="{{row.children}}"
+              wx:for-item="child"
+              wx:key="key"
+              class="dimension-row dimension-child-row dimension-row-link"
+              hover-class="dimension-row-pressed"
+              data-dimension="style"
+              data-key="{{child.key}}"
+              data-label="{{child.label}}"
+              data-scope="child"
+              bindtap="openDimensionStat"
+              aria-role="button"
+              aria-label="查询啤酒风格{{child.label}}"
+            >
+              <text>{{child.label}}</text>
+              <view class="dimension-row-value">
+                <text>{{child.count}} / {{child.quantity}}</text>
+                <text class="dimension-drill-icon">›</text>
+              </view>
+            </view>
+          </block>
         </view>
       </block>
-    </view>
 
-    <view wx:if="{{hopStats.length > 0}}" class="dimension-section">
-      <view class="dimension-head">
-        <text>啤酒花</text>
-        <text>条目 / 剩余</text>
-      </view>
-      <view wx:for="{{hopStats}}" wx:key="key" class="dimension-row">
-        <text>{{item.label}}</text>
-        <text>{{item.count}} / {{item.quantity}}</text>
-      </view>
-    </view>
-
-    <view wx:if="{{freshnessStats.length > 0}}" class="dimension-section">
-      <view class="dimension-head">
-        <text>新鲜程度</text>
-        <text>条目 / 剩余</text>
-      </view>
-      <view wx:for="{{freshnessStats}}" wx:key="key" class="dimension-row">
-        <text>{{item.label}}</text>
-        <text>{{item.count}} / {{item.quantity}}</text>
-      </view>
-    </view>
-
-    <view class="preview-head">
-      <text class="preview-title">优先查看</text>
-      <view class="link-btn" bindtap="showQuery">查看全部</view>
-    </view>
-
-      <view wx:if="{{statsItems.length == 0 && sampleModeEnabled}}" class="empty with-action">
-        <text>暂无库存数据</text>
-        <view class="btn secondary small" bindtap="restoreSamples">恢复示例</view>
+      <view class="preview-head">
+        <text class="preview-title">优先查看</text>
+        <view class="link-btn" bindtap="showQuery">查看全部</view>
       </view>
 
-    <view wx:for="{{statsItems}}" wx:key="id" class="preview-item">
-      <view class="cover {{item.imagePath ? 'photo-cover' : ''}}" data-src="{{item.imagePath}}" bindtap="previewPhoto">
-        <image wx:if="{{item.imagePath}}" src="{{item.imagePath}}" mode="aspectFill"></image>
-        <text wx:else>BEER</text>
+        <view wx:if="{{statsItems.length == 0}}" class="empty with-action">
+          <text>酒窖还是空的，从收到的第一款酒开始记录吧。</text>
+          <view class="btn primary small" bindtap="showAdd">去入库第一款</view>
+        </view>
+
+      <view wx:for="{{statsItems}}" wx:key="id" class="preview-item">
+        <view class="cover {{item.imagePath ? 'photo-cover' : ''}}" data-src="{{item.imagePath}}" bindtap="previewPhoto">
+          <image wx:if="{{item.imagePath}}" src="{{item.imagePath}}" mode="aspectFill"></image>
+          <text wx:else>BEER</text>
+        </view>
+        <view class="item-main">
+          <text class="brewery">{{item.breweryText}}</text>
+          <text class="name">{{item.name}}</text>
+          <text class="meta">{{item.styleText}}{{item.hopsText ? ' · ' + item.hopsText : ''}} · 剩余 {{item.quantity}} · {{item.date}}</text>
+        </view>
+        <text class="freshness {{item.freshLevel}}">{{item.freshText}}</text>
       </view>
-      <view class="item-main">
-        <text class="brewery">{{item.breweryText}}</text>
-        <text class="name">{{item.name}}</text>
-        <text class="meta">{{item.styleText}} · {{item.hopsText}} · 剩余 {{item.quantity}} · {{item.date}}</text>
-      </view>
-      <text class="freshness {{item.freshLevel}}">{{item.freshText}}</text>
-    </view>
+    </block>
   </view>
 
   <view wx:if="{{activeTab == 'query'}}">
@@ -129,22 +153,24 @@
     <view class="panel inventory">
       <view class="panel-head">
         <view>
-          <text class="panel-title">剩余啤酒</text>
+          <text class="panel-title">{{statFilter == 'drunk' ? '已喝记录' : '剩余啤酒'}}</text>
         </view>
         <picker class="sort-control" mode="selector" range="{{sortOptions}}" range-key="label" value="{{sortIndex}}" bindchange="onSortChange">
           <view class="select sort-select">{{sortOptions[sortIndex].label}}</view>
         </picker>
       </view>
 
-      <view wx:if="{{statFilterText}}" class="active-filter">
+      <view wx:if="{{statFilterText && statFilter != 'drunk'}}" class="active-filter">
         <text>{{statFilterText}}</text>
         <view class="clear-filter" bindtap="clearStatFilter">清除</view>
       </view>
 
-      <view wx:if="{{visibleGroups.length == 0 && drunkGroups.length == 0}}" class="empty">没有匹配的酒。</view>
+      <view wx:if="{{visibleGroups.length == 0 && drunkGroups.length == 0}}" class="empty">{{statFilter == 'drunk' ? '还没有喝过的酒哦～' : '没有匹配的酒。'}}</view>
 
       <view wx:for="{{visibleGroups}}" wx:key="key" class="item group-item {{item.hasRating ? '' : 'no-rating'}}">
-        <view class="delete-corner" data-key="{{item.key}}" data-ids="{{item.childIds}}" catchtap="deleteItemGroup">×</view>
+        <view class="delete-corner" data-key="{{item.key}}" data-ids="{{item.childIds}}" catchtap="deleteItemGroup" hover-class="mini-btn-pressed" aria-role="button" aria-label="删除这款酒的全部库存">
+          <image class="detail-action-glyph" src="/assets/icons/detail-trash.svg" mode="aspectFit"></image>
+        </view>
         <view class="cover {{item.imagePath ? 'photo-cover' : ''}}" data-src="{{item.imagePath}}" bindtap="previewPhoto">
           <image wx:if="{{item.imagePath}}" src="{{item.imagePath}}" mode="aspectFill"></image>
           <text wx:else>BEER</text>
@@ -154,7 +180,7 @@
             <text class="brewery">{{item.breweryText}}</text>
             <text class="name">{{item.name}}</text>
           </view>
-          <text class="meta">{{item.styleText}} · {{item.hopsText}} · {{item.sizeText}}</text>
+          <text class="meta">{{item.styleText}}{{item.hopsText ? ' · ' + item.hopsText : ''}} · {{item.sizeText}}</text>
           <text class="note">合计剩余 {{item.quantity}}</text>
         </view>
         <view wx:if="{{item.hasRating}}" class="item-side">
@@ -168,16 +194,22 @@
             </view>
             <text class="freshness batch-freshness {{batch.freshLevel}}">{{batch.freshText}}</text>
             <view class="actions batch-actions">
-              <view class="mini-btn heart-btn {{batch.favorite ? 'liked' : ''}}" data-id="{{batch.id}}" bindtap="toggleCellarFavorite">{{batch.favorite ? '♥' : '♡'}}</view>
-              <view class="mini-btn done-btn" data-id="{{batch.id}}" bindtap="drinkOne">✓</view>
-              <view class="mini-btn edit-btn" data-id="{{batch.id}}" bindtap="editItem" aria-label="编辑">✎</view>
+              <view class="mini-btn icon-action-btn heart-btn {{batch.favorite ? 'liked' : ''}}" data-id="{{batch.id}}" bindtap="toggleCellarFavorite" hover-class="mini-btn-pressed" aria-role="button" aria-label="{{batch.favorite ? '取消收藏' : '收藏'}}">
+                <image class="detail-action-glyph" src="{{batch.favorite ? '/assets/icons/detail-heart-filled.svg' : '/assets/icons/detail-heart.svg'}}" mode="aspectFit"></image>
+              </view>
+              <view class="mini-btn icon-action-btn done-btn" data-id="{{batch.id}}" bindtap="drinkOne" hover-class="mini-btn-pressed" aria-role="button" aria-label="喝掉一瓶">
+                <text class="detail-drink-text">喝</text>
+              </view>
+              <view class="mini-btn icon-action-btn edit-btn" data-id="{{batch.id}}" bindtap="editItem" hover-class="mini-btn-pressed" aria-role="button" aria-label="编辑">
+                <image class="detail-action-glyph" src="/assets/icons/detail-edit.svg" mode="aspectFit"></image>
+              </view>
             </view>
           </view>
         </view>
       </view>
 
-      <view wx:if="{{drunkGroups.length > 0}}" class="drunk-section">
-        <view class="preview-head">
+      <view wx:if="{{drunkGroups.length > 0}}" class="drunk-section {{statFilter == 'drunk' ? 'drunk-only' : ''}}">
+        <view wx:if="{{statFilter != 'drunk'}}" class="preview-head">
           <text class="preview-title">喝过的</text>
         </view>
         <view wx:for="{{drunkGroups}}" wx:key="key" class="item group-item drunk-item {{item.hasRating ? '' : 'no-rating'}}">
@@ -188,7 +220,7 @@
           <view class="item-main">
             <text class="brewery">{{item.breweryText}}</text>
             <text class="name">{{item.name}}</text>
-            <text class="meta">{{item.styleText}} · {{item.hopsText}} · {{item.sizeText}}</text>
+            <text class="meta">{{item.styleText}}{{item.hopsText ? ' · ' + item.hopsText : ''}} · {{item.sizeText}}</text>
           </view>
           <view wx:if="{{item.hasRating}}" class="item-side">
             <text class="rating-badge">{{item.ratingText}}</text>
@@ -203,8 +235,12 @@
                 </view>
               </view>
               <view class="actions batch-actions">
-                <view class="mini-btn heart-btn {{batch.favorite ? 'liked' : ''}}" data-id="{{batch.id}}" bindtap="toggleCellarFavorite">{{batch.favorite ? '♥' : '♡'}}</view>
-                <view class="mini-btn more-btn" data-id="{{batch.id}}" data-kind="cellar" data-status="drunk" bindtap="toggleActionMenu">…</view>
+                <view class="mini-btn icon-action-btn heart-btn {{batch.favorite ? 'liked' : ''}}" data-id="{{batch.id}}" bindtap="toggleCellarFavorite" hover-class="mini-btn-pressed" aria-role="button" aria-label="{{batch.favorite ? '取消收藏' : '收藏'}}">
+                  <image class="detail-action-glyph" src="{{batch.favorite ? '/assets/icons/detail-heart-filled.svg' : '/assets/icons/detail-heart.svg'}}" mode="aspectFit"></image>
+                </view>
+                <view class="mini-btn icon-action-btn more-btn" data-id="{{batch.id}}" data-kind="cellar" data-status="drunk" bindtap="toggleActionMenu" hover-class="mini-btn-pressed" aria-role="button" aria-label="更多操作">
+                  <image class="detail-action-glyph" src="/assets/icons/detail-more.svg" mode="aspectFit"></image>
+                </view>
               </view>
             </view>
           </view>
@@ -213,14 +249,79 @@
     </view>
   </view>
 
-  <view wx:if="{{activeTab == 'add'}}" class="panel editor">
-    <view class="panel-head">
-      <view>
-        <text class="panel-title">{{editingCellarId ? '编辑库存' : '记录库存'}}</text>
+  <view wx:if="{{activeTab == 'add'}}" class="panel editor record-page-editor">
+    <view class="record-page-head">
+      <view class="record-page-back" data-kind="cellar" bindtap="leaveRecordForm" aria-role="button" aria-label="返回">
+        <text class="record-page-back-icon">‹</text>
+        <text>返回</text>
       </view>
-      <view class="btn secondary small" bindtap="resetForm">{{editingCellarId ? '取消编辑' : '清空'}}</view>
+      <text class="record-page-title">{{editingCellarId ? '编辑库存' : '啤酒入库'}}</text>
+      <view wx:if="{{!editingCellarId}}" class="record-page-clear" bindtap="resetForm" aria-role="button">清空</view>
     </view>
 
+    <view wx:if="{{!editingCellarId}}" class="intake-scan-card">
+      <view class="scan-camera-icon"></view>
+      <view class="intake-scan-copy">
+        <text class="intake-scan-title">拍酒标，自动填写</text>
+        <text class="intake-scan-desc">可拍正面和背面，识别酒名、酒厂、风格、容量与日期；结果不会自动入库。</text>
+      </view>
+      <button class="btn primary intake-scan-btn {{isRecognizingBeer ? 'restart' : ''}}" loading="{{isSelectingBeerLabels}}" disabled="{{isSelectingBeerLabels}}" bindtap="chooseBeerLabelsForRecognition">
+        {{isRecognizingBeer ? '重新识别' : (isSelectingBeerLabels ? '打开中' : '拍照识别')}}
+      </button>
+      <text class="intake-scan-status">{{recognitionEntryStatus}}</text>
+      <text class="intake-scan-privacy">酒标照片会发送至云端 AI 识别，请在保存前核对结果。</text>
+    </view>
+
+    <view wx:if="{{recognitionStage == 'preparing' || recognitionStage == 'uploading' || recognitionStage == 'recognizing' || recognitionStage == 'error'}}" class="recognition-progress-card {{recognitionStage == 'error' ? 'error' : ''}}">
+      <view class="recognition-progress-head">
+        <view class="recognition-progress-indicator {{recognitionStage == 'error' ? 'error' : 'working'}}">
+          <text wx:if="{{recognitionStage == 'error'}}">!</text>
+        </view>
+        <view class="recognition-progress-copy">
+          <text class="recognition-progress-title">{{recognitionStage == 'error' ? recognitionErrorMessage : recognitionEntryStatus}}</text>
+          <text class="recognition-progress-hint">{{recognitionStage == 'error' ? recognitionErrorHint : recognitionProgressHint}}</text>
+        </view>
+      </view>
+      <view wx:if="{{recognitionStage != 'error'}}" class="recognition-progress-steps">
+        <view class="recognition-progress-step {{recognitionStage == 'preparing' ? 'active' : 'done'}}">
+          <view class="recognition-step-dot"></view>
+          <text>准备照片</text>
+        </view>
+        <view class="recognition-progress-step {{recognitionStage == 'uploading' ? 'active' : (recognitionStage == 'recognizing' ? 'done' : '')}}">
+          <view class="recognition-step-dot"></view>
+          <text>安全上传</text>
+        </view>
+        <view class="recognition-progress-step {{recognitionStage == 'recognizing' ? 'active' : ''}}">
+          <view class="recognition-step-dot"></view>
+          <text>AI 识别</text>
+        </view>
+      </view>
+      <view wx:if="{{recognitionStage == 'error'}}" class="recognition-error-actions">
+        <button wx:if="{{recognitionCanRetry}}" class="btn primary recognition-error-btn" bindtap="retryBeerRecognition">重试识别</button>
+        <button class="btn secondary recognition-error-btn" bindtap="dismissRecognitionError">改为手填</button>
+      </view>
+    </view>
+
+    <view wx:if="{{recognitionFields.length > 0}}" class="recognition-result-card">
+      <view class="recognition-result-head">
+        <view>
+          <text class="recognition-result-title">已识别并填入</text>
+          <text class="recognition-result-meta">{{recognitionImageCount}} 张酒标 · {{recognitionConfidenceText}}</text>
+        </view>
+        <view class="recognition-clear" bindtap="clearBeerRecognition">收起</view>
+      </view>
+      <view class="recognition-field-list">
+        <view wx:for="{{recognitionFields}}" wx:key="label" class="recognition-field-chip">
+          <text class="recognition-field-label">{{item.label}}</text>
+          <text class="recognition-field-value">{{item.value}}</text>
+        </view>
+      </view>
+      <view wx:if="{{recognitionWarnings.length > 0}}" class="recognition-warning-list">
+        <text wx:for="{{recognitionWarnings}}" wx:key="*this" class="recognition-warning">• {{item}}</text>
+      </view>
+    </view>
+
+    <view class="form-section-title">酒款信息</view>
     <view class="suggest-field">
       <input class="field" value="{{form.name}}" placeholder="名称，例如 Pliny the Elder" bindinput="onBeerNameInput" bindfocus="showBeerTips" />
       <view wx:if="{{showExistingBeerSuggestions && existingBeerSuggestions.length > 0}}" class="suggestions beer-suggestions">
@@ -231,36 +332,31 @@
       </view>
     </view>
 
-    <view class="row one">
-      <picker mode="selector" range="{{styleOptions}}" range-key="label" value="{{form.styleIndex}}" bindchange="onStyleChange">
-        <view class="select">{{styleOptions[form.styleIndex].label}}</view>
-      </picker>
+    <view class="selector-trigger" data-kind="style" data-target="cellar" bindtap="openCommonSelector" aria-role="button" aria-label="选择啤酒风格">
+      <text class="selector-trigger-value">{{formStyleDisplay || '选择啤酒风格'}}</text>
+      <text class="selector-trigger-arrow">›</text>
     </view>
-    <input wx:if="{{styleOptions[form.styleIndex].value == 'custom'}}" class="field" value="{{form.customStyle}}" data-key="customStyle" placeholder="输入自定义啤酒风格" bindinput="onFormInput" bindfocus="hideCellarHopTips" />
 
-    <view class="suggest-field">
-      <input class="field" value="{{form.brewery}}" placeholder="酒厂 / 品牌，可手动输入" bindinput="onBreweryInput" bindfocus="showBreweryTips" />
-      <view wx:if="{{showBrewerySuggestions}}" class="suggestions">
-        <button wx:for="{{brewerySuggestions}}" wx:key="value" class="suggestion" data-value="{{item.value}}" bindtap="selectBrewery">
-          {{item.label}}
-        </button>
+    <view class="selector-trigger" data-kind="brewery" data-target="cellar" bindtap="openCommonSelector" aria-role="button" aria-label="选择酒厂或品牌">
+      <text class="selector-trigger-value {{form.brewery ? '' : 'placeholder-select'}}">{{form.brewery || '选择或输入酒厂 / 品牌'}}</text>
+      <text class="selector-trigger-arrow">›</text>
+    </view>
+
+    <view class="selector-trigger hop-selector-trigger" data-kind="hop" data-target="cellar" bindtap="openCommonSelector" aria-role="button" aria-label="选择啤酒花">
+      <view wx:if="{{formHopDisplayValues.length > 0}}" class="selector-trigger-chip-list">
+        <text wx:for="{{formHopDisplayValues}}" wx:key="value" class="selector-trigger-chip">{{item.label}}</text>
       </view>
+      <text wx:else class="selector-trigger-value placeholder-select">选择啤酒花，可多选</text>
+      <text class="selector-trigger-arrow">›</text>
     </view>
 
-    <view class="suggest-field hop-picker">
-      <input class="field" value="{{form.hops}}" placeholder="啤酒花，例如 Citra / 西楚，可手动输入多个" bindinput="onHopInput" bindfocus="showHopTips" />
-      <view wx:if="{{showHopSuggestions}}" class="suggestions">
-        <button wx:for="{{hopSuggestions}}" wx:key="value" class="suggestion {{item.selected ? 'selected' : ''}}" data-value="{{item.value}}" bindtap="selectHop">
-          {{item.label}}
-        </button>
-      </view>
-    </view>
-
+    <view class="form-section-title intake-batch-title">本次到货</view>
     <view class="row one">
       <picker mode="date" value="{{form.date}}" bindchange="onDateChange">
-        <view class="select">{{form.date}}</view>
+        <view class="select {{form.date ? '' : 'placeholder-select'}}">{{form.date || '选择生产 / 罐装日期'}}</view>
       </picker>
     </view>
+    <text class="form-helper">请填写酒标上的生产或罐装日期，不是到货日期。</text>
 
     <view class="row two">
       <input class="field" type="number" value="{{form.quantity}}" data-key="quantity" placeholder="剩余" bindinput="onFormInput" bindfocus="hideCellarHopTips" />
@@ -271,9 +367,15 @@
         </picker>
       </view>
     </view>
-    <view class="rating-lookup">
+    <view class="quantity-quick-row">
+      <text class="quantity-quick-label">到货数量</text>
+      <view class="quantity-quick-options">
+        <view wx:for="{{quickQuantityOptions}}" wx:key="*this" class="quantity-quick-option {{form.quantity == item ? 'active' : ''}}" data-quantity="{{item}}" bindtap="setQuickQuantity">{{item}}</view>
+      </view>
+    </view>
+    <view class="rating-lookup {{untappdEnabled ? '' : 'single'}}">
       <input class="field" type="digit" value="{{form.rating}}" data-key="rating" placeholder="Untappd" bindinput="onFormInput" bindfocus="hideCellarHopTips" />
-      <button class="btn secondary lookup-btn" bindtap="lookupUntappdForCellar">{{untappdStatusText}}</button>
+      <button wx:if="{{untappdEnabled}}" class="btn secondary lookup-btn" bindtap="lookupUntappdForCellar">{{untappdStatusText}}</button>
     </view>
 
     <view class="photo-box">
@@ -289,7 +391,10 @@
 
     <textarea class="field note-input" value="{{form.note}}" data-key="note" placeholder="存放位置、批次、想喝场景" bindinput="onFormInput" bindfocus="hideCellarHopTips"></textarea>
 
-    <button class="btn primary" bindtap="saveNewItem">{{editingCellarId ? '保存修改' : '保存库存'}}</button>
+    <view class="intake-save-actions">
+      <button class="btn primary" bindtap="saveNewItem">{{editingCellarId ? '保存修改' : '确认入库'}}</button>
+      <button wx:if="{{!editingCellarId && recognitionFields.length > 0}}" class="btn secondary" data-continue-scan="true" bindtap="saveNewItem">入库并扫描下一款</button>
+    </view>
   </view>
   </view>
 
@@ -303,9 +408,18 @@
 
       <view wx:if="{{favoriteItems.length == 0}}" class="empty">还没有标记喜欢的酒。</view>
 
-      <view wx:for="{{favoriteItems}}" wx:key="key" class="item favorite-item">
+      <view wx:for="{{favoriteItems}}" wx:key="key" class="item favorite-item {{settings.favoriteShowBatchTime ? '' : 'favorite-item-summary'}}">
         <view class="source-badge {{item.sourceClass}}" aria-label="{{item.sourceClass == 'cellar' ? '家里库存' : '外面记录'}}">
-          <view class="icon {{item.sourceClass == 'cellar' ? 'home-icon' : 'outside-icon'}}"></view>
+          <view wx:if="{{item.sourceClass == 'cellar'}}" class="module-tab-icon cellar-tab-icon" aria-hidden="true">
+            <view class="cellar-bottle cellar-bottle-left"></view>
+            <view class="cellar-bottle cellar-bottle-right"></view>
+            <view class="cellar-shelf-line"></view>
+          </view>
+          <view wx:else class="module-tab-icon bar-tab-icon" aria-hidden="true">
+            <view class="bar-glass bar-glass-left"></view>
+            <view class="bar-glass bar-glass-right"></view>
+            <view class="bar-cheers-mark"></view>
+          </view>
         </view>
         <view class="item-main">
           <text class="brewery">{{item.breweryText}}</text>
@@ -314,9 +428,10 @@
             <text wx:if="{{item.englishName}}" class="english-name">{{item.englishName}}</text>
           </view>
           <text class="meta">{{item.styleText}}</text>
-          <text class="favorite-hops">{{item.hopsText}}</text>
+          <text wx:if="{{item.hopsText}}" class="favorite-hops">{{item.hopsText}}</text>
         </view>
-        <view class="favorite-batch-list">
+        <text wx:if="{{!settings.favoriteShowBatchTime && item.averageTasteRatingText}}" class="taste-rating-tag favorite-average-rating">{{item.averageTasteRatingText}}</text>
+        <view wx:if="{{settings.favoriteShowBatchTime}}" class="favorite-batch-list">
           <view wx:for="{{item.children}}" wx:for-item="batch" wx:key="id" class="favorite-batch-row">
             <text class="favorite-batch-date">{{batch.batchLabel}}</text>
             <text wx:if="{{batch.tasteRatingText}}" class="taste-rating-tag batch-rating-tag">{{batch.tasteRatingText}}</text>
@@ -327,10 +442,9 @@
   </view>
 
   <view wx:if="{{activeModule == 'bar'}}" class="module">
-    <view class="tabs">
-      <view class="tab {{barActiveTab == 'stats' ? 'active' : ''}}" data-tab="stats" bindtap="switchBarTab">统计</view>
-      <view class="tab {{barActiveTab == 'query' ? 'active' : ''}}" data-tab="query" bindtap="switchBarTab">查看</view>
-      <view class="tab {{barActiveTab == 'add' ? 'active' : ''}}" data-tab="add" bindtap="switchBarTab">记录</view>
+    <view wx:if="{{barActiveTab != 'add'}}" class="tabs">
+      <view class="tab {{barActiveTab == 'stats' ? 'active' : ''}}" data-tab="stats" bindtap="switchBarTab">总览</view>
+      <view class="tab {{barActiveTab == 'query' ? 'active' : ''}}" data-tab="query" bindtap="switchBarTab">明细</view>
     </view>
 
     <view wx:if="{{barActiveTab == 'stats'}}" class="panel stats-panel">
@@ -417,12 +531,14 @@
       </view>
     </view>
 
-    <view wx:if="{{barActiveTab == 'add'}}" class="panel editor">
-      <view class="panel-head">
-        <view>
-          <text class="panel-title">{{editingBarId ? '编辑酒吧记录' : '新增酒吧记录'}}</text>
+    <view wx:if="{{barActiveTab == 'add'}}" class="panel editor record-page-editor">
+      <view class="record-page-head">
+        <view class="record-page-back" data-kind="bar" bindtap="leaveRecordForm" aria-role="button" aria-label="返回">
+          <text class="record-page-back-icon">‹</text>
+          <text>返回</text>
         </view>
-        <view class="btn secondary small" bindtap="resetBarForm">清空</view>
+        <text class="record-page-title">{{editingBarId ? '编辑酒吧记录' : '新增酒吧记录'}}</text>
+        <view wx:if="{{!editingBarId}}" class="record-page-clear" bindtap="resetBarForm" aria-role="button">清空</view>
       </view>
 
       <view class="form-section-title">酒吧信息</view>
@@ -444,21 +560,23 @@
 
       <view class="form-section-title">啤酒信息</view>
       <input class="field" value="{{barForm.name}}" data-key="name" placeholder="酒名" bindinput="onBarFormInput" bindfocus="hideBarHopTips" />
-      <input class="field" value="{{barForm.brewery}}" data-key="brewery" placeholder="酒厂 / 品牌" bindinput="onBarFormInput" bindfocus="hideBarHopTips" />
+      <view class="selector-trigger" data-kind="brewery" data-target="bar" bindtap="openCommonSelector" aria-role="button" aria-label="选择酒厂或品牌">
+        <text class="selector-trigger-value {{barForm.brewery ? '' : 'placeholder-select'}}">{{barForm.brewery || '选择或输入酒厂 / 品牌'}}</text>
+        <text class="selector-trigger-arrow">›</text>
+      </view>
       <view class="bar-style-rating-row">
-        <picker mode="selector" range="{{styleOptions}}" range-key="label" value="{{barForm.styleIndex}}" bindchange="onBarStyleChange">
-          <view class="select">{{styleOptions[barForm.styleIndex].label}}</view>
-        </picker>
+        <view class="selector-trigger compact-selector-trigger" data-kind="style" data-target="bar" bindtap="openCommonSelector" aria-role="button" aria-label="选择啤酒风格">
+          <text class="selector-trigger-value">{{barFormStyleDisplay || '选择风格'}}</text>
+          <text class="selector-trigger-arrow">›</text>
+        </view>
         <input class="field compact-rating-field" type="digit" value="{{barForm.rating}}" data-key="rating" placeholder="评分" bindinput="onBarFormInput" bindfocus="hideBarHopTips" />
       </view>
-      <input wx:if="{{styleOptions[barForm.styleIndex].value == 'custom'}}" class="field" value="{{barForm.customStyle}}" data-key="customStyle" placeholder="输入自定义啤酒风格" bindinput="onBarFormInput" bindfocus="hideBarHopTips" />
-      <view class="suggest-field hop-picker">
-        <input class="field" value="{{barForm.hops}}" placeholder="啤酒花，例如 Mosaic / 马赛克，可手动输入多个" bindinput="onBarHopInput" bindfocus="showBarHopTips" />
-        <view wx:if="{{showBarHopSuggestions}}" class="suggestions">
-          <button wx:for="{{barHopSuggestions}}" wx:key="value" class="suggestion {{item.selected ? 'selected' : ''}}" data-value="{{item.value}}" bindtap="selectBarHop">
-            {{item.label}}
-          </button>
+      <view class="selector-trigger hop-selector-trigger" data-kind="hop" data-target="bar" bindtap="openCommonSelector" aria-role="button" aria-label="选择啤酒花">
+        <view wx:if="{{barFormHopDisplayValues.length > 0}}" class="selector-trigger-chip-list">
+          <text wx:for="{{barFormHopDisplayValues}}" wx:key="value" class="selector-trigger-chip">{{item.label}}</text>
         </view>
+        <text wx:else class="selector-trigger-value placeholder-select">选择啤酒花，可多选</text>
+        <text class="selector-trigger-arrow">›</text>
       </view>
 
       <view class="photo-box">
@@ -504,8 +622,12 @@
               <text class="meta">{{item.venueRatingText}} · {{item.recordCount}} 条记录</text>
             </view>
             <view class="bar-group-side">
-              <view class="mini-btn heart-btn {{item.barFavorite ? 'liked' : ''}}" data-venue="{{item.venue}}" data-city="{{item.city}}" bindtap="toggleBarVenueFavorite">{{item.barFavorite ? '♥' : '♡'}}</view>
-              <view wx:if="{{barViewMode != 'beers'}}" class="expand-icon" data-key="{{item.key}}" bindtap="toggleBarGroupExpanded">{{item.expanded ? '⌃' : '⌄'}}</view>
+              <view class="mini-btn icon-action-btn heart-btn {{item.barFavorite ? 'liked' : ''}}" data-venue="{{item.venue}}" data-city="{{item.city}}" bindtap="toggleBarVenueFavorite" hover-class="mini-btn-pressed" aria-role="button" aria-label="{{item.barFavorite ? '取消收藏酒吧' : '收藏酒吧'}}">
+                <image class="detail-action-glyph" src="{{item.barFavorite ? '/assets/icons/detail-heart-filled.svg' : '/assets/icons/detail-heart.svg'}}" mode="aspectFit"></image>
+              </view>
+              <view wx:if="{{barViewMode != 'beers'}}" class="expand-icon" data-key="{{item.key}}" bindtap="toggleBarGroupExpanded" hover-class="mini-btn-pressed" aria-role="button" aria-label="{{item.expanded ? '收起酒吧记录' : '展开酒吧记录'}}">
+                <image class="detail-action-glyph" src="{{item.expanded ? '/assets/icons/detail-chevron-up.svg' : '/assets/icons/detail-chevron-down.svg'}}" mode="aspectFit"></image>
+              </view>
             </view>
           </view>
           <view wx:if="{{barViewMode == 'beers' || item.expanded}}" class="bar-beer-list">
@@ -514,12 +636,16 @@
                 <text class="batch-date">{{beer.name}}</text>
                 <text class="batch-meta">{{beer.date}} · {{beer.ratingText}}</text>
                 <text class="batch-meta">{{beer.breweryText}} · {{beer.styleText}}</text>
-                <text wx:if="{{beer.hops}}" class="batch-meta">{{beer.hops}}</text>
+                <text wx:if="{{beer.hopsText}}" class="batch-meta">{{beer.hopsText}}</text>
                 <text wx:if="{{beer.note}}" class="note">{{beer.note}}</text>
               </view>
               <view class="actions bar-actions">
-                <view class="mini-btn heart-btn {{beer.favorite ? 'liked' : ''}}" data-id="{{beer.id}}" bindtap="toggleBarFavorite">{{beer.favorite ? '♥' : '♡'}}</view>
-                <view class="mini-btn more-btn" data-id="{{beer.id}}" data-kind="bar" data-status="record" bindtap="toggleActionMenu">…</view>
+                <view class="mini-btn icon-action-btn heart-btn {{beer.favorite ? 'liked' : ''}}" data-id="{{beer.id}}" bindtap="toggleBarFavorite" hover-class="mini-btn-pressed" aria-role="button" aria-label="{{beer.favorite ? '取消收藏' : '收藏'}}">
+                  <image class="detail-action-glyph" src="{{beer.favorite ? '/assets/icons/detail-heart-filled.svg' : '/assets/icons/detail-heart.svg'}}" mode="aspectFit"></image>
+                </view>
+                <view class="mini-btn icon-action-btn more-btn" data-id="{{beer.id}}" data-kind="bar" data-status="record" bindtap="toggleActionMenu" hover-class="mini-btn-pressed" aria-role="button" aria-label="更多操作">
+                  <image class="detail-action-glyph" src="/assets/icons/detail-more.svg" mode="aspectFit"></image>
+                </view>
               </view>
             </view>
           </view>
@@ -541,33 +667,258 @@
   <view wx:if="{{showUtilityPanel}}" class="utility-layer" bindtap="closeUtilityPanel">
     <view class="utility-panel" catchtap="noop">
       <view class="utility-head">
+        <view wx:if="{{utilityPanelMode == 'commonOptions'}}" class="utility-back" bindtap="leaveCommonOptionsPanel" aria-role="button" aria-label="返回设置">‹</view>
+        <view wx:if="{{utilityPanelMode == 'optionLibrary'}}" class="utility-back" bindtap="leaveOptionLibraryPanel" aria-role="button" aria-label="返回设置">‹</view>
         <text class="utility-title">
           {{utilityPanelMode == 'export' ? '导出记录' :
             (utilityPanelMode == 'import' ? '导入记录' :
+            (utilityPanelMode == 'settings' ? '设置' :
+            (utilityPanelMode == 'commonOptions' ? '常用选项' :
+            (utilityPanelMode == 'optionLibrary' ? '选项资料库' :
             (utilityPanelMode == 'cache' ? '缓存管理' :
             (utilityPanelMode == 'feedback' ? '反馈与建议' :
-            (utilityPanelMode == 'untappd' ? 'Untappd 配置说明' : '关于啤记'))))}}
+            (utilityPanelMode == 'privacy' ? '隐私说明' :
+            '关于啤记')))))))}}
         </text>
         <view class="utility-close" bindtap="closeUtilityPanel">×</view>
       </view>
 
       <view wx:if="{{utilityPanelMode == 'export'}}" class="utility-body">
-        <text class="utility-copy">库存 {{exportSummary ? exportSummary.cellarCount : 0}} 条 · 酒吧 {{exportSummary ? exportSummary.barCount : 0}} 条 · 图片引用 {{exportSummary ? exportSummary.imageCount : 0}} 个</text>
+        <text class="utility-copy">库存 {{exportSummary ? exportSummary.cellarCount : 0}} 条 · 酒吧 {{exportSummary ? exportSummary.barCount : 0}} 条 · 照片 {{exportSummary ? exportSummary.imageCount : 0}} 张</text>
+        <text class="utility-copy">生成备份文件会把本机照片一并打包；“复制 JSON”仅适合没有照片的文字记录。</text>
         <textarea class="utility-textarea" value="{{exportText}}" maxlength="-1" disabled></textarea>
         <text wx:if="{{backupFilePath}}" class="utility-copy">最近已保存到：{{backupFilePath}}</text>
         <view class="utility-actions">
           <view class="btn secondary utility-btn" bindtap="copyExportData">复制 JSON</view>
-          <view class="btn primary utility-btn" bindtap="saveExportFile">保存到本地</view>
+          <button class="btn primary utility-btn" loading="{{isExporting}}" disabled="{{isExporting}}" bindtap="saveExportFile">生成完整备份</button>
+          <button wx:if="{{backupFilePath}}" class="btn secondary utility-btn" bindtap="shareBackupFile">发送到微信</button>
         </view>
       </view>
 
       <view wx:if="{{utilityPanelMode == 'import'}}" class="utility-body">
-        <text class="utility-copy">粘贴之前导出的啤记备份 JSON。导入会覆盖当前本地记录。</text>
+        <text class="utility-copy">优先选择之前发送到微信的啤记备份文件，可同时恢复照片。导入会覆盖当前本地记录。</text>
+        <button class="btn secondary utility-btn import-file-btn" bindtap="chooseBackupFile">选择备份文件</button>
+        <view wx:if="{{importFileName}}" class="utility-note-card">
+          <text class="utility-note-title">{{importFileName}}</text>
+          <text class="utility-note-line">库存 {{importSummary.cellarCount}} 条 · 酒吧 {{importSummary.barCount}} 条 · 照片 {{importSummary.imageCount}} 张</text>
+        </view>
+        <text class="utility-copy import-fallback-label">也可以粘贴旧版纯文字 JSON：</text>
         <textarea class="utility-textarea" value="{{importText}}" maxlength="-1" placeholder="把备份 JSON 粘贴到这里" bindinput="onImportTextInput"></textarea>
         <view class="utility-actions">
-          <view class="btn primary utility-btn" bindtap="confirmImportData">开始导入</view>
+          <button class="btn primary utility-btn" loading="{{isImporting}}" disabled="{{isImporting}}" bindtap="confirmImportData">确认导入</button>
         </view>
       </view>
+
+      <view wx:if="{{utilityPanelMode == 'settings'}}" class="utility-body">
+        <text class="utility-copy">这些偏好保存在本机，会影响当前设备上的记录体验。</text>
+        <view class="utility-setting-list">
+          <view class="utility-setting-row">
+            <view class="utility-setting-copy">
+              <text class="utility-setting-title">喝完后评分</text>
+              <text class="utility-setting-desc">点击喝掉库存时，弹出 0-5 分口味评分。</text>
+            </view>
+            <switch checked="{{tasteRatingEnabled}}" color="#ffc000" bindchange="onTasteRatingEnabledChange" />
+          </view>
+          <view class="utility-setting-row">
+            <view class="utility-setting-copy">
+              <text class="utility-setting-title">收藏列表展示批次时间</text>
+              <text class="utility-setting-desc">关闭后隐藏每个批次，并在酒款右上角展示全部口味评分的平均值。</text>
+            </view>
+            <switch checked="{{settings.favoriteShowBatchTime}}" color="#ffc000" bindchange="onFavoriteBatchTimeChange" />
+          </view>
+          <view class="utility-setting-row">
+            <view class="utility-setting-copy">
+              <text class="utility-setting-title">默认打开</text>
+              <text class="utility-setting-desc">立即切换，并作为下次进入时优先显示的模块。</text>
+            </view>
+            <picker mode="selector" range="{{settingsDefaultModuleOptions}}" range-key="label" value="{{settingsDefaultModuleIndex}}" bindchange="onDefaultModuleChange">
+              <view class="utility-picker">{{settingsDefaultModuleLabel}}</view>
+            </picker>
+          </view>
+          <view class="utility-setting-row">
+            <view class="utility-setting-copy">
+              <text class="utility-setting-title">啤酒风格显示</text>
+              <text class="utility-setting-desc">只影响列表和统计中的展示名称，不修改原始记录。</text>
+            </view>
+            <picker mode="selector" range="{{settingsDisplayLanguageOptions}}" range-key="label" value="{{settingsStyleLanguageIndex}}" bindchange="onStyleDisplayLanguageChange">
+              <view class="utility-picker">{{settingsStyleLanguageLabel}}</view>
+            </picker>
+          </view>
+          <view class="utility-setting-row">
+            <view class="utility-setting-copy">
+              <text class="utility-setting-title">啤酒花显示</text>
+              <text class="utility-setting-desc">已收录的啤酒花可在中文和英文名称间切换。</text>
+            </view>
+            <picker mode="selector" range="{{settingsDisplayLanguageOptions}}" range-key="label" value="{{settingsHopLanguageIndex}}" bindchange="onHopDisplayLanguageChange">
+              <view class="utility-picker">{{settingsHopLanguageLabel}}</view>
+            </picker>
+          </view>
+          <view class="utility-setting-row actionable-setting-row" data-return-mode="settings" bindtap="openCommonOptionsPanel" aria-role="button" aria-label="管理常用选项">
+            <view class="utility-setting-copy">
+              <text class="utility-setting-title">常用选项</text>
+              <text class="utility-setting-desc">预先整理常喝酒厂、风格和啤酒花，新增记录时可以更快选择。</text>
+            </view>
+            <view class="common-options-setting-summary">
+              <text>{{settings.commonOptions.breweries.length + settings.commonOptions.styles.length + settings.commonOptions.hops.length}} 项</text>
+              <text class="drawer-list-arrow">›</text>
+            </view>
+          </view>
+          <view class="utility-setting-row actionable-setting-row" data-return-mode="settings" bindtap="openOptionLibraryPanel" aria-role="button" aria-label="管理选项资料库">
+            <view class="utility-setting-copy">
+              <text class="utility-setting-title">选项资料库</text>
+              <text class="utility-setting-desc">提前维护完整的酒厂、风格和啤酒花；新增记录时可直接搜索选择。</text>
+            </view>
+            <view class="common-options-setting-summary">
+              <text>{{settings.optionLibrary.breweries.length + settings.optionLibrary.styles.length + settings.optionLibrary.hops.length}} 项</text>
+              <text class="drawer-list-arrow">›</text>
+            </view>
+          </view>
+          <view class="freshness-settings-block">
+            <view class="freshness-settings-head">
+              <view class="utility-setting-copy">
+                <text class="utility-setting-title">默认新鲜度规则</text>
+                <text class="utility-setting-desc">未适配专属规则的啤酒风格将使用此默认规则。超过“优先喝”上限后判为偏老/过期。</text>
+              </view>
+            </view>
+            <view class="freshness-rule-inputs">
+              <view class="freshness-rule-field">
+                <text>新鲜/稳定上限</text>
+                <view class="freshness-number-control">
+                  <input type="number" value="{{freshnessDefaultFreshDaysInput}}" data-key="freshnessDefaultFreshDaysInput" bindinput="onFreshnessDefaultInput" />
+                  <text>天</text>
+                </view>
+              </view>
+              <view class="freshness-rule-field">
+                <text>优先喝上限</text>
+                <view class="freshness-number-control">
+                  <input type="number" value="{{freshnessDefaultPriorityDaysInput}}" data-key="freshnessDefaultPriorityDaysInput" bindinput="onFreshnessDefaultInput" />
+                  <text>天</text>
+                </view>
+              </view>
+            </view>
+            <button class="btn secondary freshness-save-btn" bindtap="saveDefaultFreshnessRule">保存默认规则</button>
+          </view>
+          <view class="utility-setting-row">
+            <view class="utility-setting-copy">
+              <text class="utility-setting-title">按啤酒风格分别判定</text>
+              <text class="utility-setting-desc">开启后，可用 IPA、世涛等关键词添加专属规则；没有匹配时仍使用默认规则。</text>
+            </view>
+            <switch checked="{{settings.freshnessRulesEnabled}}" color="#ffc000" bindchange="onFreshnessRulesEnabledChange" />
+          </view>
+          <view wx:if="{{settings.freshnessRulesEnabled}}" class="freshness-settings-block custom-freshness-block">
+            <text class="utility-setting-title">添加风格规则</text>
+            <input class="freshness-keyword-input" value="{{freshnessStyleKeywordInput}}" data-key="freshnessStyleKeywordInput" placeholder="风格关键词，例如 IPA、世涛、酸啤" bindinput="onFreshnessStyleRuleInput" />
+            <view class="freshness-rule-inputs">
+              <view class="freshness-rule-field">
+                <text>新鲜/稳定上限</text>
+                <view class="freshness-number-control">
+                  <input type="number" value="{{freshnessStyleFreshDaysInput}}" data-key="freshnessStyleFreshDaysInput" bindinput="onFreshnessStyleRuleInput" />
+                  <text>天</text>
+                </view>
+              </view>
+              <view class="freshness-rule-field">
+                <text>优先喝上限</text>
+                <view class="freshness-number-control">
+                  <input type="number" value="{{freshnessStylePriorityDaysInput}}" data-key="freshnessStylePriorityDaysInput" bindinput="onFreshnessStyleRuleInput" />
+                  <text>天</text>
+                </view>
+              </view>
+            </view>
+            <button class="btn primary freshness-save-btn" bindtap="addFreshnessStyleRule">添加判定规则</button>
+            <view wx:if="{{settings.freshnessStyleRules.length > 0}}" class="freshness-rule-list">
+              <view wx:for="{{settings.freshnessStyleRules}}" wx:key="id" class="freshness-rule-item">
+                <view class="freshness-rule-copy">
+                  <text class="freshness-rule-name">{{item.keyword}}</text>
+                  <text class="freshness-rule-summary">新鲜/稳定 ≤ {{item.freshDays}} 天 · 优先喝 ≤ {{item.priorityDays}} 天 · 超过为偏老/过期</text>
+                </view>
+                <view class="freshness-rule-delete" data-id="{{item.id}}" bindtap="removeFreshnessStyleRule">删除</view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{utilityPanelMode == 'commonOptions'}}" class="utility-body common-options-manager">
+        <text class="utility-copy">常用项由你手动维护；最近使用会根据酒窖与酒吧记录自动生成。拖动左侧把手可以调整展示顺序。</text>
+        <view class="common-option-tabs" aria-role="tablist">
+          <view wx:for="{{commonOptionManageTabs}}" wx:key="value" class="common-option-tab {{commonOptionManageKind == item.value ? 'active' : ''}}" data-kind="{{item.value}}" bindtap="switchCommonOptionManageKind" aria-role="tab" aria-selected="{{commonOptionManageKind == item.value}}">
+            <text>{{item.label}}</text>
+            <text class="common-option-tab-count">{{item.count}}</text>
+          </view>
+        </view>
+        <view class="common-option-add-row">
+          <input class="common-option-input" value="{{commonOptionInput}}" placeholder="{{commonOptionInputPlaceholder}}" bindinput="onCommonOptionInput" />
+          <button class="btn primary common-option-add-btn" bindtap="addManagedCommonOption">添加</button>
+        </view>
+        <view wx:if="{{commonOptionManageSuggestions.length > 0}}" class="common-option-suggestions">
+          <view wx:for="{{commonOptionManageSuggestions}}" wx:key="value" class="common-option-suggestion" data-value="{{item.value}}" bindtap="addManagedCommonOption">
+            <text class="common-option-suggestion-plus">＋</text>
+            <text>{{item.label}}</text>
+          </view>
+        </view>
+        <view wx:if="{{commonOptionManageItems.length == 0}}" class="common-option-empty">
+          <text class="common-option-empty-title">{{commonOptionEmptyTitle}}</text>
+          <text>可以从上方建议中选择，也可以直接输入自己的常用项。</text>
+        </view>
+        <view wx:else class="common-option-manage-list">
+          <view wx:for="{{commonOptionManageItems}}" wx:key="value" class="common-option-manage-item {{commonOptionDragIndex == index ? 'dragging' : ''}}">
+            <view class="common-option-drag-handle" data-index="{{index}}" bindtouchstart="onCommonOptionDragStart" catchtouchmove="onCommonOptionDragMove" bindtouchend="onCommonOptionDragEnd" bindtouchcancel="onCommonOptionDragEnd" aria-role="button" aria-label="拖动排序">
+              <text></text><text></text><text></text>
+            </view>
+            <view class="common-option-manage-copy">
+              <text class="common-option-manage-label">{{item.label}}</text>
+              <text wx:if="{{item.secondary}}" class="common-option-manage-secondary">{{item.secondary}}</text>
+            </view>
+            <view class="common-option-remove" data-value="{{item.value}}" bindtap="removeManagedCommonOption" aria-role="button" aria-label="移除{{item.label}}">移除</view>
+          </view>
+        </view>
+      </view>
+
+      <scroll-view wx:if="{{utilityPanelMode == 'optionLibrary'}}" scroll-y enable-flex class="utility-body common-options-manager option-library-manager">
+        <view class="option-library-scroll-content">
+          <text class="utility-copy">资料库用于长期维护候选项；可以设为常用、修改名称或移除。所有操作都不会改动已有记录。</text>
+        <view class="common-option-tabs" aria-role="tablist">
+          <view wx:for="{{optionLibraryManageTabs}}" wx:key="value" class="common-option-tab {{optionLibraryManageKind == item.value ? 'active' : ''}}" data-kind="{{item.value}}" bindtap="switchOptionLibraryManageKind" aria-role="tab" aria-selected="{{optionLibraryManageKind == item.value}}">
+            <text>{{item.label}}</text>
+            <text class="common-option-tab-count">{{item.count}}</text>
+          </view>
+        </view>
+        <view wx:if="{{optionLibraryEditingValue}}" class="option-library-edit-hint">
+          <text>正在修改“{{optionLibraryEditingValue}}”</text>
+          <text bindtap="cancelOptionLibraryEdit" aria-role="button">取消</text>
+        </view>
+        <view class="common-option-add-row">
+          <input class="common-option-input" value="{{optionLibraryInput}}" placeholder="{{optionLibraryInputPlaceholder}}" bindinput="onOptionLibraryInput" />
+          <button class="btn primary common-option-add-btn" bindtap="saveOptionLibraryValue">{{optionLibraryEditingValue ? '保存' : '添加'}}</button>
+        </view>
+        <view wx:if="{{optionLibraryManageSuggestions.length > 0}}" class="common-option-suggestions">
+          <view wx:for="{{optionLibraryManageSuggestions}}" wx:key="value" class="common-option-suggestion" data-value="{{item.value}}" bindtap="saveOptionLibraryValue">
+            <text class="common-option-suggestion-plus">＋</text>
+            <text>{{item.label}}</text>
+          </view>
+        </view>
+        <view wx:if="{{optionLibraryManageItems.length == 0}}" class="common-option-empty">
+          <text class="common-option-empty-title">{{optionLibraryEmptyTitle}}</text>
+          <text>可以从上方建议中选择，也可以直接输入并保存自己的选项。</text>
+        </view>
+          <view wx:else class="common-option-manage-list option-library-list">
+            <view wx:for="{{optionLibraryManageItems}}" wx:key="value" class="option-library-manage-item">
+              <view class="common-option-manage-copy">
+                <view class="option-library-name-row">
+                  <text class="common-option-manage-label">{{item.label}}</text>
+                  <text wx:if="{{item.isCommon}}" class="option-library-common-tag">常用</text>
+                </view>
+                <text wx:if="{{item.secondary}}" class="common-option-manage-secondary">{{item.secondary}}</text>
+              </view>
+              <view class="option-library-actions">
+                <text data-value="{{item.value}}" bindtap="toggleOptionLibraryCommon">{{item.isCommon ? '取消常用' : '设为常用'}}</text>
+                <text data-value="{{item.value}}" bindtap="editOptionLibraryValue">编辑</text>
+                <text class="danger" data-value="{{item.value}}" bindtap="removeOptionLibraryValue">删除</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </scroll-view>
 
       <view wx:if="{{utilityPanelMode == 'cache'}}" class="utility-body">
         <view class="utility-stat-list">
@@ -611,23 +962,107 @@
         </view>
       </view>
 
-      <view wx:if="{{utilityPanelMode == 'untappd'}}" class="utility-body">
-        <text class="utility-copy">当前小程序仍使用本地存储。Untappd 查询依赖云函数和服务端凭据，当前未启用。</text>
+      <view wx:if="{{utilityPanelMode == 'privacy'}}" class="utility-body">
+        <text class="utility-copy">啤记采用本地优先设计。库存、酒吧记录、评分和手动保存的照片默认只保存在当前设备。</text>
         <view class="utility-note-card">
-          <text class="utility-note-title">启用步骤</text>
-          <text class="utility-note-line">1. 准备 `client_id` / `client_secret`</text>
-          <text class="utility-note-line">2. 在云函数里封装查询接口</text>
-          <text class="utility-note-line">3. 打开 `utils/untappd.js` 的启用开关</text>
+          <text class="utility-note-title">酒标识别</text>
+          <text class="utility-note-line">仅当你主动点击“拍照识别”时，所选酒标照片才会经腾讯云 CloudBase 云函数发送至 TokenHub，用于提取本次入库信息。</text>
+          <text class="utility-note-line">识别结果不会自动入库，须由你核对并确认保存。</text>
+        </view>
+        <view class="utility-note-card">
+          <text class="utility-note-title">数据控制</text>
+          <text class="utility-note-line">导入、导出和发送备份都只在你主动操作时发生。</text>
+          <text class="utility-note-line">你可以在“更多功能 → 缓存管理”中清空全部本地记录和照片。</text>
         </view>
       </view>
 
       <view wx:if="{{utilityPanelMode == 'about'}}" class="utility-body">
-        <text class="utility-copy">啤记当前定位是长期自用的喝酒记录工具，核心是库存可信、回看方便、备份可恢复。</text>
+        <text class="utility-copy">啤记是一款长期使用的个人喝酒记录工具，核心是库存可信、回看方便、备份可恢复。</text>
         <view class="utility-note-card">
-          <text class="utility-note-title">当前能力</text>
+          <text class="utility-note-title">啤记 1.0.0</text>
           <text class="utility-note-line">家里库存 / 外面记录 / 喜欢的酒 / 喝酒日历</text>
-          <text class="utility-note-line">本地备份导出 / 粘贴导入 / 缓存清理</text>
+          <text class="utility-note-line">酒标识别 / 携照片备份 / 文件恢复 / 缓存清理</text>
+          <text class="utility-note-line">理性饮酒，未成年人请勿饮酒。</text>
         </view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{showCommonSelector}}" class="common-selector-layer" bindtap="closeCommonSelector">
+    <view class="common-selector-sheet" catchtap="noop">
+      <view class="common-selector-head">
+        <view>
+          <text class="common-selector-title">{{commonSelectorTitle}}</text>
+          <text wx:if="{{commonSelectorKind == 'hop'}}" class="common-selector-subtitle">可多选，选好后点击完成</text>
+        </view>
+        <view class="common-selector-close" bindtap="closeCommonSelector" aria-role="button" aria-label="关闭">×</view>
+      </view>
+      <view class="common-selector-search">
+        <view class="common-selector-search-icon" aria-hidden="true"></view>
+        <input value="{{commonSelectorQuery}}" placeholder="{{commonSelectorPlaceholder}}" bindinput="onCommonSelectorQueryInput" focus="{{showCommonSelector}}" />
+      </view>
+      <scroll-view scroll-y class="common-selector-body">
+        <view wx:if="{{commonSelectorKind == 'hop' && commonSelectorSelectedValues.length > 0}}" class="common-selector-section selected-option-section">
+          <view class="common-selector-section-head">
+            <text>已选择 {{commonSelectorSelectedValues.length}}</text>
+          </view>
+          <view class="common-selector-chip-grid">
+            <view wx:for="{{commonSelectorSelectedValues}}" wx:key="value" class="common-selector-chip selected" data-value="{{item.value}}" bindtap="removeCommonSelectorSelected">
+              <text>{{item.label}}</text>
+              <text class="common-selector-chip-remove">×</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="common-selector-section">
+          <view class="common-selector-section-head">
+            <text>常用</text>
+            <text class="common-selector-manage-link" bindtap="openCommonOptionsFromSelector">管理常用</text>
+          </view>
+          <view wx:if="{{commonSelectorCommonItems.length > 0}}" class="common-selector-chip-grid">
+            <view wx:for="{{commonSelectorCommonItems}}" wx:key="value" class="common-selector-chip {{item.selected ? 'selected' : ''}}" data-value="{{item.value}}" bindtap="selectCommonSelectorOption">
+              <text>{{item.label}}</text>
+              <text wx:if="{{item.selected}}" class="common-selector-chip-check"></text>
+            </view>
+          </view>
+          <text wx:else class="common-selector-empty-copy">还没有常用项，可点击右侧管理。</text>
+        </view>
+
+        <view wx:if="{{commonSelectorRecentItems.length > 0}}" class="common-selector-section">
+          <view class="common-selector-section-head"><text>最近使用</text></view>
+          <view class="common-selector-chip-grid">
+            <view wx:for="{{commonSelectorRecentItems}}" wx:key="value" class="common-selector-chip {{item.selected ? 'selected' : ''}}" data-value="{{item.value}}" bindtap="selectCommonSelectorOption">
+              <text>{{item.label}}</text>
+              <text wx:if="{{item.selected}}" class="common-selector-chip-check"></text>
+            </view>
+          </view>
+        </view>
+
+        <view class="common-selector-section result-option-section">
+          <view class="common-selector-section-head">
+            <text>{{commonSelectorQuery ? '搜索结果' : '全部选项'}}</text>
+            <text class="common-selector-manage-link" bindtap="openOptionLibraryFromSelector">管理资料库</text>
+          </view>
+          <view wx:if="{{commonSelectorShowCustomAction}}" class="common-selector-result custom-option-result" bindtap="useCustomSelectorValue">
+            <view class="common-selector-result-mark">＋</view>
+            <view class="common-selector-result-copy">
+              <text class="common-selector-result-label">新建“{{commonSelectorCustomValue}}”并选择</text>
+              <text class="common-selector-result-secondary">同时保存到我的{{commonSelectorKind == 'brewery' ? '酒厂' : (commonSelectorKind == 'style' ? '风格' : '啤酒花')}}资料库</text>
+            </view>
+          </view>
+          <view wx:for="{{commonSelectorResultItems}}" wx:key="value" class="common-selector-result {{item.selected ? 'selected' : ''}}" data-value="{{item.value}}" bindtap="selectCommonSelectorOption">
+            <view class="common-selector-result-mark"></view>
+            <view class="common-selector-result-copy">
+              <text class="common-selector-result-label">{{item.label}}</text>
+              <text wx:if="{{item.secondary}}" class="common-selector-result-secondary">{{item.secondary}}</text>
+            </view>
+          </view>
+          <text wx:if="{{commonSelectorResultItems.length == 0 && !commonSelectorShowCustomAction}}" class="common-selector-empty-copy">没有匹配选项，换个关键词试试。</text>
+        </view>
+      </scroll-view>
+      <view wx:if="{{commonSelectorKind == 'hop'}}" class="common-selector-footer">
+        <text>已选 {{commonSelectorSelectedValues.length}} 项</text>
+        <view class="common-selector-confirm" bindtap="confirmCommonSelector">完成</view>
       </view>
     </view>
   </view>
@@ -636,18 +1071,29 @@
     <view class="action-popover {{actionMenuKind == 'bar' ? 'bar-action-popover' : ''}}" style="{{actionMenuStyle}}" catchtap="noop">
       <text class="action-title">更多操作</text>
       <view class="action-popover-buttons">
-        <view wx:if="{{actionMenuKind == 'cellar'}}" class="mini-btn {{actionMenuStatus == 'drunk' ? 'cancel-btn' : 'done-btn'}}" data-id="{{actionMenuId}}" bindtap="toggleCellarDrunk">{{actionMenuStatus == 'drunk' ? '×' : '✓'}}</view>
-        <view wx:if="{{actionMenuKind == 'cellar'}}" class="mini-btn" data-id="{{actionMenuId}}" bindtap="editItem" aria-label="编辑">✎</view>
-        <view wx:if="{{actionMenuKind == 'cellar'}}" class="mini-btn danger-text" data-id="{{actionMenuId}}" bindtap="deleteItem">删</view>
-        <view wx:if="{{actionMenuKind == 'bar'}}" class="mini-btn" data-id="{{actionMenuId}}" bindtap="editBarItem" aria-label="编辑">✎</view>
-        <view wx:if="{{actionMenuKind == 'bar'}}" class="mini-btn danger-text" data-id="{{actionMenuId}}" bindtap="deleteBarItem">×</view>
+        <view wx:if="{{actionMenuKind == 'cellar'}}" class="mini-btn icon-action-btn {{actionMenuStatus == 'drunk' ? 'restore-btn' : 'done-btn'}}" data-id="{{actionMenuId}}" bindtap="toggleCellarDrunk" hover-class="mini-btn-pressed" aria-role="button" aria-label="{{actionMenuStatus == 'drunk' ? '恢复到库存' : '喝掉一瓶'}}">
+          <image wx:if="{{actionMenuStatus == 'drunk'}}" class="detail-action-glyph" src="/assets/icons/detail-restore.svg" mode="aspectFit"></image>
+          <text wx:else class="detail-drink-text">喝</text>
+        </view>
+        <view wx:if="{{actionMenuKind == 'cellar'}}" class="mini-btn icon-action-btn" data-id="{{actionMenuId}}" bindtap="editItem" hover-class="mini-btn-pressed" aria-role="button" aria-label="编辑">
+          <image class="detail-action-glyph" src="/assets/icons/detail-edit.svg" mode="aspectFit"></image>
+        </view>
+        <view wx:if="{{actionMenuKind == 'cellar'}}" class="mini-btn icon-action-btn danger-icon-btn" data-id="{{actionMenuId}}" bindtap="deleteItem" hover-class="mini-btn-pressed" aria-role="button" aria-label="删除">
+          <image class="detail-action-glyph" src="/assets/icons/detail-trash.svg" mode="aspectFit"></image>
+        </view>
+        <view wx:if="{{actionMenuKind == 'bar'}}" class="mini-btn icon-action-btn" data-id="{{actionMenuId}}" bindtap="editBarItem" hover-class="mini-btn-pressed" aria-role="button" aria-label="编辑">
+          <image class="detail-action-glyph" src="/assets/icons/detail-edit.svg" mode="aspectFit"></image>
+        </view>
+        <view wx:if="{{actionMenuKind == 'bar'}}" class="mini-btn icon-action-btn danger-icon-btn" data-id="{{actionMenuId}}" bindtap="deleteBarItem" hover-class="mini-btn-pressed" aria-role="button" aria-label="删除">
+          <image class="detail-action-glyph" src="/assets/icons/detail-trash.svg" mode="aspectFit"></image>
+        </view>
       </view>
     </view>
   </view>
 
   <view wx:if="{{showSideDrawer}}" class="drawer-layer" bindtap="closeSideDrawer">
     <view class="drawer-panel" catchtap="noop">
-      <scroll-view scroll-y class="drawer-scroll">
+      <scroll-view scroll-y scroll-top="{{drawerScrollTop}}" class="drawer-scroll">
         <view class="drawer-profile">
           <view class="drawer-avatar">{{userProfile.avatarInitial}}</view>
           <view class="drawer-profile-copy">
@@ -656,14 +1102,9 @@
             <text class="drawer-tagline">{{userProfile.tagline}}</text>
           </view>
         </view>
-        <view class="drawer-auth-actions">
-          <view class="btn secondary small drawer-auth-btn" bindtap="toggleDevAccount">{{devUser.loggedIn ? '退出登录' : '开发态登录'}}</view>
-          <text wx:if="{{sampleModeEnabled}}" class="drawer-auth-hint">当前保留测试数据入口，发布前可关闭</text>
-        </view>
-
         <view class="drawer-card calendar-card">
           <view class="drawer-card-head">
-            <text class="drawer-card-title">喝酒日历</text>
+            <text class="drawer-card-title">记录日历</text>
             <view class="calendar-nav">
               <view class="calendar-nav-btn" bindtap="showPreviousCalendarMonth">‹</view>
               <text class="calendar-month">{{calendarMonthLabel}}</text>
@@ -679,12 +1120,11 @@
             <view
               wx:for="{{calendarDays}}"
               wx:key="key"
-              class="calendar-day {{item.empty ? 'empty' : ''}} {{item.level}} {{item.isToday ? 'today' : ''}} {{item.isSelected ? 'selected' : ''}}"
+              class="calendar-day {{item.empty ? 'empty' : ''}} {{item.hasRecord ? 'has-record' : ''}} {{item.isToday ? 'today' : ''}} {{item.isSelected ? 'selected' : ''}}"
               data-date="{{item.date}}"
               bindtap="selectCalendarDate"
             >
               <text wx:if="{{!item.empty}}" class="calendar-day-label">{{item.label}}</text>
-              <text wx:if="{{item.total > 0}}" class="calendar-day-count">{{item.total}}</text>
             </view>
           </view>
 
@@ -694,8 +1134,12 @@
               <text class="calendar-stat-label">记录天数</text>
             </view>
             <view class="calendar-stat">
-              <text class="calendar-stat-number">{{calendarStats.totalRecords}}</text>
-              <text class="calendar-stat-label">总记录</text>
+              <text class="calendar-stat-number">{{calendarStats.intakeRecords}}</text>
+              <text class="calendar-stat-label">入库</text>
+            </view>
+            <view class="calendar-stat">
+              <text class="calendar-stat-number">{{calendarStats.drinkRecords}}</text>
+              <text class="calendar-stat-label">饮用</text>
             </view>
             <view class="calendar-stat">
               <text class="calendar-stat-number">{{calendarStats.streakDays}}</text>
@@ -704,11 +1148,20 @@
           </view>
 
           <view class="calendar-summary">
-            <text class="calendar-summary-title">{{selectedCalendarSummary ? selectedCalendarSummary.dateLabel : '本月暂无记录'}}</text>
-            <text class="calendar-summary-text">{{selectedCalendarSummary ? ('当天共 ' + selectedCalendarSummary.total + ' 条记录') : '喝酒日期会在这里高亮展示'}}</text>
+            <text class="calendar-summary-title">{{selectedCalendarSummary ? selectedCalendarSummary.dateLabel : calendarMonthLabel}}</text>
+            <text class="calendar-summary-text">{{selectedCalendarSummary ? (selectedCalendarSummary.scope == 'day' ? ('当天共 ' + selectedCalendarSummary.total + ' 条记录') : ('本月共 ' + selectedCalendarSummary.total + ' 条记录')) : '本月共 0 条记录'}}</text>
             <view wx:if="{{selectedCalendarSummary}}" class="calendar-summary-tags">
-              <text class="calendar-summary-tag">家里 {{selectedCalendarSummary.cellar}}</text>
-              <text class="calendar-summary-tag">外面 {{selectedCalendarSummary.bar}}</text>
+              <text class="calendar-summary-tag intake">入库 {{selectedCalendarSummary.intake}}</text>
+              <text class="calendar-summary-tag cellar-drink">家里喝 {{selectedCalendarSummary.cellarDrink}}</text>
+              <text class="calendar-summary-tag bar-drink">酒吧喝 {{selectedCalendarSummary.barDrink}}</text>
+            </view>
+            <view wx:if="{{selectedCalendarSummary && selectedCalendarSummary.events.length > 0}}" class="calendar-event-list">
+              <view wx:for="{{selectedCalendarSummary.events}}" wx:key="key" class="calendar-event-row">
+                <text class="calendar-event-type {{item.source}}">{{item.typeLabel}}</text>
+                <text class="calendar-event-name">{{item.dateText}}{{item.name}}{{item.quantityText}}</text>
+                <text wx:if="{{item.legacy}}" class="calendar-event-legacy">历史</text>
+              </view>
+              <text wx:if="{{selectedCalendarSummary.canToggleEvents}}" class="calendar-event-more" bindtap="toggleCalendarEvents">{{selectedCalendarSummary.eventsExpanded ? '收起' : ('另有 ' + selectedCalendarSummary.hiddenEventCount + ' 条记录')}}</text>
             </view>
           </view>
         </view>
@@ -718,30 +1171,53 @@
             <text class="drawer-card-title">更多功能</text>
           </view>
           <view class="drawer-grid">
-            <view class="drawer-grid-item" data-label="图表统计" bindtap="showDrawerAction">
-              <text class="drawer-grid-icon">◔</text>
+            <view class="drawer-grid-item" data-label="图表统计" bindtap="showDrawerAction" hover-class="drawer-grid-item-pressed" hover-stay-time="80" aria-role="button" aria-label="图表统计">
+              <view class="drawer-grid-icon chart" aria-hidden="true">
+                <view class="feature-chart">
+                  <view class="feature-chart-bar short"></view>
+                  <view class="feature-chart-bar medium"></view>
+                  <view class="feature-chart-bar tall"></view>
+                  <view class="feature-chart-baseline"></view>
+                </view>
+              </view>
               <text class="drawer-grid-label">图表统计</text>
             </view>
-            <view class="drawer-grid-item" data-label="导出记录" bindtap="showDrawerAction">
-              <text class="drawer-grid-icon">⇪</text>
+            <view class="drawer-grid-item" data-label="导出记录" bindtap="showDrawerAction" hover-class="drawer-grid-item-pressed" hover-stay-time="80" aria-role="button" aria-label="导出记录">
+              <view class="drawer-grid-icon export" aria-hidden="true">
+                <view class="feature-transfer export">
+                  <view class="feature-transfer-shaft"></view>
+                  <view class="feature-transfer-head"></view>
+                  <view class="feature-transfer-tray"></view>
+                </view>
+              </view>
               <text class="drawer-grid-label">导出记录</text>
             </view>
-            <view class="drawer-grid-item" data-label="导入记录" bindtap="showDrawerAction">
-              <text class="drawer-grid-icon">⇩</text>
+            <view class="drawer-grid-item" data-label="导入记录" bindtap="showDrawerAction" hover-class="drawer-grid-item-pressed" hover-stay-time="80" aria-role="button" aria-label="导入记录">
+              <view class="drawer-grid-icon import" aria-hidden="true">
+                <view class="feature-transfer import">
+                  <view class="feature-transfer-shaft"></view>
+                  <view class="feature-transfer-head"></view>
+                  <view class="feature-transfer-tray"></view>
+                </view>
+              </view>
               <text class="drawer-grid-label">导入记录</text>
             </view>
-            <view class="drawer-grid-item" data-label="缓存管理" bindtap="showDrawerAction">
-              <text class="drawer-grid-icon">◫</text>
+            <view class="drawer-grid-item" data-label="缓存管理" bindtap="showDrawerAction" hover-class="drawer-grid-item-pressed" hover-stay-time="80" aria-role="button" aria-label="缓存管理">
+              <view class="drawer-grid-icon storage" aria-hidden="true">
+                <view class="feature-storage">
+                  <view class="feature-storage-top"></view>
+                  <view class="feature-storage-body">
+                    <view class="feature-storage-line first"></view>
+                    <view class="feature-storage-line second"></view>
+                  </view>
+                </view>
+              </view>
               <text class="drawer-grid-label">缓存管理</text>
             </view>
           </view>
         </view>
 
         <view class="drawer-card settings-card">
-          <view class="drawer-list-item" bindtap="toggleDevAccount">
-            <text class="drawer-list-label">{{devUser.loggedIn ? '退出开发态账号' : '登录开发态账号'}}</text>
-            <text class="drawer-list-arrow">›</text>
-          </view>
           <view class="drawer-list-item" data-label="设置" bindtap="showDrawerAction">
             <text class="drawer-list-label">设置</text>
             <text class="drawer-list-arrow">›</text>
@@ -750,8 +1226,8 @@
             <text class="drawer-list-label">反馈与建议</text>
             <text class="drawer-list-arrow">›</text>
           </view>
-          <view class="drawer-list-item" data-label="Untappd 配置说明" bindtap="showDrawerAction">
-            <text class="drawer-list-label">Untappd 配置说明</text>
+          <view class="drawer-list-item" data-label="隐私说明" bindtap="showDrawerAction">
+            <text class="drawer-list-label">隐私说明</text>
             <text class="drawer-list-arrow">›</text>
           </view>
           <view class="drawer-list-item" data-label="关于啤记" bindtap="showDrawerAction">
@@ -763,15 +1239,70 @@
     </view>
   </view>
 
-  <view class="module-tabs">
-    <view class="module-tab {{activeModule == 'cellar' ? 'active' : ''}}" data-module="cellar" bindtap="switchModule" aria-label="家里库存">
-      <view class="icon home-icon"></view>
+  <view wx:if="{{!((activeModule == 'cellar' && activeTab == 'add') || (activeModule == 'bar' && barActiveTab == 'add'))}}" class="bottom-navigation">
+    <view class="module-tabs" aria-role="tablist">
+      <view class="module-tab {{activeModule == 'cellar' ? 'active' : ''}}" data-module="cellar" bindtap="switchModule" aria-role="tab" aria-selected="{{activeModule == 'cellar'}}" aria-label="酒窖">
+        <view class="module-tab-icon cellar-tab-icon" aria-hidden="true">
+          <view class="cellar-bottle cellar-bottle-left"></view>
+          <view class="cellar-bottle cellar-bottle-right"></view>
+          <view class="cellar-shelf-line"></view>
+        </view>
+        <text class="module-tab-label">酒窖</text>
+      </view>
+      <view class="module-tab {{activeModule == 'favorites' ? 'active' : ''}}" data-module="favorites" bindtap="switchModule" aria-role="tab" aria-selected="{{activeModule == 'favorites'}}" aria-label="喜欢的酒">
+        <view class="module-tab-icon favorites-tab-icon" aria-hidden="true">
+          <text class="favorites-heart">♡</text>
+          <view class="favorites-spark favorites-spark-large"></view>
+          <view class="favorites-spark favorites-spark-small"></view>
+        </view>
+        <text class="module-tab-label">喜欢</text>
+      </view>
+      <view class="module-tab {{activeModule == 'bar' ? 'active' : ''}}" data-module="bar" bindtap="switchModule" aria-role="tab" aria-selected="{{activeModule == 'bar'}}" aria-label="酒吧记录">
+        <view class="module-tab-icon bar-tab-icon" aria-hidden="true">
+          <view class="bar-glass bar-glass-left"></view>
+          <view class="bar-glass bar-glass-right"></view>
+          <view class="bar-cheers-mark"></view>
+        </view>
+        <text class="module-tab-label">酒吧</text>
+      </view>
     </view>
-    <view class="module-tab {{activeModule == 'favorites' ? 'active' : ''}}" data-module="favorites" bindtap="switchModule" aria-label="喜欢的酒">
-      <view class="icon heart-icon"></view>
+    <view class="record-fab" bindtap="openRecordMenu" aria-role="button" aria-label="新增记录">
+      <view class="record-fab-plus" aria-hidden="true"></view>
+      <text class="record-fab-label">记录</text>
     </view>
-    <view class="module-tab {{activeModule == 'bar' ? 'active' : ''}}" data-module="bar" bindtap="switchModule" aria-label="外面记录">
-      <view class="icon outside-icon"></view>
+  </view>
+
+  <view wx:if="{{showRecordMenu}}" class="record-menu-layer" bindtap="closeRecordMenu" catchtouchmove="noop">
+    <view class="record-menu-content" catchtap="noop">
+      <text class="record-menu-title">新增记录</text>
+      <text class="record-menu-subtitle">这次的酒，要记在哪里？</text>
+      <view class="record-menu-actions">
+        <view class="record-menu-action" data-kind="cellar" bindtap="startNewRecord" aria-role="button" aria-label="酒窖入库">
+          <view class="record-menu-icon-tile cellar">
+            <view class="module-tab-icon cellar-tab-icon" aria-hidden="true">
+              <view class="cellar-bottle cellar-bottle-left"></view>
+              <view class="cellar-bottle cellar-bottle-right"></view>
+              <view class="cellar-shelf-line"></view>
+            </view>
+          </view>
+          <text class="record-menu-action-label">酒窖入库</text>
+          <text class="record-menu-action-hint">记录收到的新酒</text>
+        </view>
+        <view class="record-menu-action" data-kind="bar" bindtap="startNewRecord" aria-role="button" aria-label="酒吧打卡">
+          <view class="record-menu-icon-tile bar">
+            <view class="module-tab-icon bar-tab-icon" aria-hidden="true">
+              <view class="bar-glass bar-glass-left"></view>
+              <view class="bar-glass bar-glass-right"></view>
+              <view class="bar-cheers-mark"></view>
+            </view>
+          </view>
+          <text class="record-menu-action-label">酒吧打卡</text>
+          <text class="record-menu-action-hint">记录在店喝到的酒</text>
+        </view>
+      </view>
+    </view>
+    <view class="record-menu-close" bindtap="closeRecordMenu" aria-role="button" aria-label="关闭新增记录菜单">
+      <view class="record-menu-close-mark" aria-hidden="true"></view>
     </view>
   </view>
 </view>

@@ -8,6 +8,12 @@
     "navigationBarTextStyle": "black",
     "backgroundColor": "#f7f2e8"
   },
+  "cloud": true,
+  "networkTimeout": {
+    "request": 45000,
+    "uploadFile": 45000,
+    "downloadFile": 45000
+  },
   "style": "v2",
   "sitemapLocation": "sitemap.json"
 }
